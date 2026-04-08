@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from .models import Tool
+
+
+def make_tool(
+    slug: str,
+    name: str,
+    category: str,
+    popularity: str,
+    popularity_score: int,
+    description: str,
+    tags: list[str],
+    url: str,
+    icon: str,
+    starter_steps: list[str],
+) -> Tool:
+    return Tool(
+        slug=slug,
+        name=name,
+        category=category,
+        popularity=popularity,
+        popularity_score=popularity_score,
+        description=description,
+        tags=tags,
+        url=url,
+        icon=icon,
+        starter_steps=starter_steps,
+    )
+
+
+# Future scaling note:
+# Replace this curated challenge catalog with an ingestion pipeline or a managed
+# database when SARKSearch expands past the MVP.
+TOOLS = [
+    make_tool("linkedin", "LinkedIn", "Career / Networking", "1B+ members", 100, "Professional networking for profiles, hiring, and outreach.", ["job", "career", "networking", "profile", "resume", "internship"], "https://www.linkedin.com/", "in", ["Create a complete profile with a headline and photo.", "Add teachers, classmates, and coworkers first.", "Turn on job alerts for the role you want."]),
+    make_tool("indeed", "Indeed", "Career / Job Search", "300M+ monthly visitors", 97, "Job board with search filters, company reviews, and resume posting.", ["job", "career", "apply", "resume", "internship", "entry-level"], "https://www.indeed.com/", "ID", ["Search for one realistic role and save three listings.", "Upload your resume for quick apply flows.", "Set alerts for your target role and location."]),
+    make_tool("glassdoor", "Glassdoor", "Career / Research", "55M+ monthly visitors", 88, "Company reviews, salary data, and interview insights for job seekers.", ["job", "salary", "company", "interview", "career", "research"], "https://www.glassdoor.com/", "GD", ["Look up the companies you want first.", "Read recent interview questions for your role.", "Compare salary ranges before interviews."]),
+    make_tool("handshake", "Handshake", "Career / Students", "15M+ student users", 78, "Career platform for students seeking internships, events, and first jobs.", ["student", "career", "internship", "job", "campus", "entry-level"], "https://joinhandshake.com/", "HS", ["Join with your school email if available.", "Complete your interests so recommendations improve.", "Apply to one internship and one campus event."]),
+    make_tool("canva", "Canva", "Creative / Resume", "170M+ monthly users", 96, "Template-based design tool for resumes, portfolios, and graphics.", ["resume", "design", "templates", "portfolio", "drag-and-drop", "beginner"], "https://www.canva.com/", "CV", ["Open a clean resume template instead of a blank page.", "Replace placeholders with your own experience and results.", "Export a PDF before you apply anywhere."]),
+    make_tool("google-docs", "Google Docs", "Productivity / Writing", "1B+ users", 94, "Online word processor with sharing, templates, and simple collaboration.", ["resume", "writing", "document", "essay", "paper", "template"], "https://docs.google.com/", "GD", ["Start from a template instead of an empty doc.", "Use comments to keep edits organized.", "Export as PDF once the structure looks right."]),
+    make_tool("grammarly", "Grammarly", "Writing / Editing", "30M+ daily users", 84, "Writing assistant for grammar, clarity, tone, and proofreading.", ["writing", "grammar", "resume", "essay", "paper", "proofread"], "https://www.grammarly.com/", "GR", ["Paste your draft into the editor.", "Fix clarity issues before fine-tuning tone.", "Read it once yourself after accepting edits."]),
+    make_tool("coursera", "Coursera", "Learning / Courses", "148M+ learners", 92, "Course platform with structured programs from universities and companies.", ["learn", "course", "python", "career", "certificate", "beginner"], "https://www.coursera.org/", "CR", ["Choose a beginner course with projects.", "Read the syllabus before enrolling.", "Schedule your first study block today."]),
+    make_tool("khan-academy", "Khan Academy", "Learning / Fundamentals", "150M+ learners", 90, "Free lessons and practice for math, science, and computing.", ["learn", "beginner", "practice", "math", "science", "computing", "free"], "https://www.khanacademy.org/", "KA", ["Pick one course instead of browsing everything.", "Take the placement quiz if available.", "Finish one short unit before switching topics."]),
+    make_tool("freecodecamp", "freeCodeCamp", "Coding / Learning", "40M+ learners", 89, "Hands-on coding curriculum with beginner-friendly certification tracks.", ["python", "coding", "programming", "learn", "projects", "free", "beginner"], "https://www.freecodecamp.org/", "FC", ["Begin with the introductory lessons.", "Code along in the browser to build momentum.", "Use the forum if you get stuck on a lesson."]),
+    make_tool("python-org", "Python.org", "Coding / Reference", "Official language site", 87, "Official source for Python downloads, docs, and beginner guides.", ["python", "programming", "download", "docs", "beginner", "reference"], "https://www.python.org/", "PY", ["Install the latest stable Python release.", "Read the beginner guide on the official site.", "Run one print statement in the interpreter first."]),
+    make_tool("github", "GitHub", "Coding / Collaboration", "150M+ developers", 95, "Code hosting and version control platform for projects and portfolios.", ["code", "portfolio", "project", "collaboration", "git", "developer"], "https://github.com/", "GH", ["Create a profile and pin one starter project.", "Write a short README for your most relevant repo.", "Commit small changes often to show progress."]),
+    make_tool("figma", "Figma", "Creative / UI Design", "4M+ professional users", 83, "Collaborative interface design and prototyping tool.", ["design", "prototype", "ui", "portfolio", "creative", "collaboration"], "https://www.figma.com/", "FG", ["Start from a community template to avoid a blank canvas.", "Use frames and text styles early.", "Share a view-only link when you want feedback."]),
+    make_tool("notion", "Notion", "Productivity / Organization", "100M+ users", 93, "Flexible workspace for notes, projects, goals, and trackers.", ["organize", "productivity", "notes", "planning", "school", "tasks"], "https://www.notion.so/", "NO", ["Start with one dashboard page for your current goal.", "Add only tasks, resources, and deadlines.", "Link useful pages back to that home page."]),
+    make_tool("trello", "Trello", "Productivity / Planning", "50M+ users", 79, "Kanban-style task management tool for simple visual planning.", ["organize", "tasks", "planning", "deadline", "project", "visual"], "https://trello.com/", "TR", ["Create three columns: to do, doing, done.", "Add your next five tasks only.", "Move one card today to build momentum."]),
+    make_tool("google-calendar", "Google Calendar", "Productivity / Scheduling", "500M+ users", 88, "Calendar tool for scheduling, reminders, and time-blocking.", ["schedule", "planning", "deadline", "calendar", "organize", "time"], "https://calendar.google.com/", "GC", ["Block real commitments first.", "Add one study or work session this week.", "Use reminders for deadlines you may miss."]),
+    make_tool("zotero", "Zotero", "Research / Citations", "Research standard", 85, "Reference manager for saving sources, notes, and citations.", ["research", "paper", "citations", "sources", "library", "academic"], "https://www.zotero.org/", "ZT", ["Install the browser connector before collecting sources.", "Create a folder for your paper topic.", "Save citation details as you read."]),
+    make_tool("google-scholar", "Google Scholar", "Research / Discovery", "Widely used academic search engine", 91, "Academic search engine for papers, authors, and citations.", ["research", "paper", "academic", "scholar", "citations", "sources"], "https://scholar.google.com/", "GS", ["Search your topic with one or two precise phrases.", "Start with relevant papers before sorting by date.", "Save the best articles to your notes immediately."]),
+    make_tool("mendeley", "Mendeley", "Research / Reference Manager", "Millions of researchers", 74, "Reference manager and reading workflow tool for academic research.", ["research", "paper", "citations", "academic", "pdf", "sources"], "https://www.mendeley.com/", "ME", ["Import your first few papers into one folder.", "Annotate as you read.", "Generate citations only after your library looks clean."]),
+    make_tool("quizlet", "Quizlet", "Learning / Study", "60M+ monthly users", 82, "Flashcards and study games for memorization and review.", ["study", "flashcards", "learn", "practice", "exam", "school"], "https://quizlet.com/", "QZ", ["Create one small study set first.", "Use learn mode after reviewing the cards once.", "Return tomorrow for spaced review."]),
+    make_tool("discord", "Discord", "Community / Social", "200M+ monthly users", 93, "Community chat platform for interest groups, clubs, and study servers.", ["friends", "community", "chat", "groups", "gaming", "study", "social"], "https://discord.com/", "DC", ["Join one server tied to a real interest.", "Read the rules before posting.", "Introduce yourself in the welcome channel if it exists."]),
+    make_tool("reddit", "Reddit", "Community / Forums", "1B+ monthly visits", 92, "Massive forum platform with topic-specific communities and advice threads.", ["community", "friends", "advice", "discussion", "research", "hobbies"], "https://www.reddit.com/", "RD", ["Find a few focused subreddits, not the front page.", "Read the pinned rules before commenting.", "Save useful threads into your notes."]),
+    make_tool("meetup", "Meetup", "Community / Events", "60M+ members", 77, "Platform for finding local and online interest-based events.", ["friends", "community", "events", "networking", "local", "hobbies"], "https://www.meetup.com/", "MU", ["Search for one topic you genuinely care about.", "Pick one beginner-friendly event.", "Read attendee comments so you know what to expect."]),
+    make_tool("behance", "Behance", "Creative / Portfolio", "50M+ members", 70, "Portfolio platform for creative work and inspiration browsing.", ["portfolio", "design", "creative", "inspiration"], "https://www.behance.net/", "BH", ["Upload only your strongest work.", "Write a short project summary for each piece.", "Browse similar creators to calibrate quality."]),
+    make_tool("chatgpt", "ChatGPT", "AI / Assistant", "Hundreds of millions of users", 94, "Conversational AI assistant for drafting, brainstorming, and learning support.", ["writing", "brainstorm", "study", "career", "coding", "assistant", "beginner"], "https://chatgpt.com/", "AI", ["Ask for a checklist or draft, not the final answer.", "Give the model specific context about your goal.", "Edit the output so it sounds like you."]),
+    make_tool("perplexity", "Perplexity", "Research / AI Search", "Millions of active users", 71, "Answer engine that cites web sources for quick research summaries.", ["research", "search", "summary", "sources", "study", "questions"], "https://www.perplexity.ai/", "PX", ["Use one specific question at a time.", "Open the cited sources instead of trusting the summary alone.", "Save the best links before moving on."]),
+    make_tool("notebooklm", "NotebookLM", "Research / Notes", "Growing educational user base", 64, "AI-assisted notebook for summarizing and synthesizing source material.", ["research", "notes", "summary", "study", "sources", "paper"], "https://notebooklm.google.com/", "NL", ["Upload only the sources you are actively using.", "Ask for a summary of themes before generating questions.", "Cross-check any claim against the source text."]),
+    make_tool("leetcode", "LeetCode", "Coding / Interview Prep", "20M+ users", 81, "Coding practice platform focused on technical interviews and algorithm drills.", ["coding", "interview", "job", "practice", "developer", "python"], "https://leetcode.com/", "LC", ["Start with easy problems in one language.", "Solve a few array and string problems first.", "Read explanations after you try on your own."]),
+    make_tool("stack-overflow", "Stack Overflow", "Coding / Community", "100M+ monthly visits", 86, "Question-and-answer community for programming problems and debugging.", ["coding", "debug", "questions", "developer", "programming", "community"], "https://stackoverflow.com/", "SO", ["Search before posting because your issue may exist already.", "Copy the smallest reproducible error into your notes.", "Compare several answers before adopting a fix."]),
+    make_tool("obsidian", "Obsidian", "Productivity / Knowledge", "Millions of note-takers", 67, "Local-first note-taking tool for linked thinking and personal knowledge bases.", ["notes", "research", "knowledge", "writing", "organize", "study"], "https://obsidian.md/", "OB", ["Create one vault for the goal you are working on now.", "Keep notes simple before using plugins.", "Link related notes so ideas stay connected."]),
+]
