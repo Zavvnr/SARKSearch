@@ -20,6 +20,10 @@ export async function initializePersistence() {
         query: { type: String, required: true },
         summary: { type: String, required: true },
         tools: { type: [String], default: [] },
+        results: { type: [mongoose.Schema.Types.Mixed], default: [] },
+        agentTrace: { type: [mongoose.Schema.Types.Mixed], default: [] },
+        orchestration: { type: mongoose.Schema.Types.Mixed, default: {} },
+        meta: { type: mongoose.Schema.Types.Mixed, default: {} },
       },
       { timestamps: true },
     );
@@ -43,6 +47,10 @@ export async function saveSearchSession(payload) {
     query: payload.query,
     summary: payload.summary,
     tools: payload.results.map((item) => item.name),
+    results: payload.results,
+    agentTrace: payload.agentTrace,
+    orchestration: payload.orchestration,
+    meta: payload.meta ?? {},
   };
 
   if (persistenceMode === "mongo" && SearchSession) {

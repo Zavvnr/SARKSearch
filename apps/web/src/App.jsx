@@ -189,7 +189,8 @@ function App() {
               </div>
               {resultsState?.meta ? (
                 <p className="meta-pill">
-                  Cache: {resultsState.meta.cache} | Persistence: {resultsState.meta.persistenceMode}
+                  Cache: {resultsState.meta.cache} | Persistence: {resultsState.meta.persistenceMode} | Agent mode:{" "}
+                  {resultsState.meta.agentMode}
                 </p>
               ) : null}
             </div>
@@ -276,6 +277,71 @@ function App() {
                 </ol>
               ) : (
                 <p className="empty-copy">Run a search to see how the recommendation engine reasoned about it.</p>
+              )}
+            </section>
+
+            <section className="inspector-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="panel-kicker">Orchestration</p>
+                  <h2>Milestones and refinement loop</h2>
+                </div>
+              </div>
+
+              {resultsState?.orchestration ? (
+                <>
+                  <div className="mini-section">
+                    <p className="mini-label">Milestones</p>
+                    <ol className="trace-list compact-list">
+                      {(resultsState.orchestration.milestones ?? []).map((item) => (
+                        <li key={`${item.owner}-${item.name}`}>
+                          <div className="trace-head">
+                            <strong>{item.name}</strong>
+                            <span>{item.status}</span>
+                          </div>
+                          <p>{item.detail}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+
+                  <div className="mini-section">
+                    <p className="mini-label">Iteration log</p>
+                    <ol className="trace-list compact-list">
+                      {(resultsState.orchestration.iterations ?? []).map((item) => (
+                        <li key={`${item.iteration}-${item.stage}-${item.detail}`}>
+                          <div className="trace-head">
+                            <strong>
+                              Iteration {item.iteration}: {item.stage}
+                            </strong>
+                            <span>{item.status}</span>
+                          </div>
+                          <p>{item.detail}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+
+                  <div className="mini-section">
+                    <p className="mini-label">Architecture notes</p>
+                    <div className="detail-list">
+                      {(resultsState.orchestration.serviceBoundaries ?? []).map((item) => (
+                        <p key={item}>{item}</p>
+                      ))}
+                      {(resultsState.orchestration.architectureNotes ?? []).map((item) => (
+                        <p key={item}>{item}</p>
+                      ))}
+                      {(resultsState.orchestration.assumptions ?? []).map((item) => (
+                        <p key={item}>Assumption: {item}</p>
+                      ))}
+                      {(resultsState.orchestration.missingRequirements ?? []).map((item) => (
+                        <p key={item}>Open requirement: {item}</p>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="empty-copy">Milestones and iteration logs will appear after the first search.</p>
               )}
             </section>
 

@@ -19,6 +19,7 @@ app.get("/api/health", (_request, response) => {
   response.json({
     status: "ok",
     persistenceMode: getPersistenceMode(),
+    gateway: "node-api",
   });
 });
 
@@ -74,6 +75,7 @@ app.post("/api/search", async (request, response) => {
       meta: {
         cache: "miss",
         persistenceMode: getPersistenceMode(),
+        agentMode: payload.orchestration?.mode ?? "heuristic",
       },
     };
 

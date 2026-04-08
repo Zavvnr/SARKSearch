@@ -39,6 +39,31 @@ class AgentTraceItem(BaseModel):
     agent: str
     status: str
     detail: str
+    mode: str = "heuristic"
+
+
+class MilestoneStatus(BaseModel):
+    name: str
+    owner: str
+    status: str
+    detail: str
+
+
+class IterationLogEntry(BaseModel):
+    iteration: int
+    stage: str
+    status: str
+    detail: str
+
+
+class OrchestrationReport(BaseModel):
+    mode: str
+    milestones: List[MilestoneStatus]
+    iterations: List[IterationLogEntry]
+    assumptions: List[str]
+    missingRequirements: List[str]
+    serviceBoundaries: List[str]
+    architectureNotes: List[str]
 
 
 class SearchResponse(BaseModel):
@@ -46,3 +71,4 @@ class SearchResponse(BaseModel):
     summary: str
     results: List[Recommendation]
     agentTrace: List[AgentTraceItem]
+    orchestration: OrchestrationReport

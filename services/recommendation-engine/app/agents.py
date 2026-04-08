@@ -252,3 +252,15 @@ def build_summary(query: str, recommendations: Iterable[Recommendation]) -> str:
     names = [tool.name for tool in top]
     tool_text = names[0] if len(names) == 1 else ", ".join(names[:-1]) + f", and {names[-1]}"
     return f"For \"{query},\" start with {tool_text} so you can move from exploration into your first practical step."
+
+
+# Compatibility layer:
+# Keep app.agents importable while routing callers to the upgraded orchestration runtime.
+from .agent_runtime import (  # noqa: E402
+    ArchitectureAgent as ArchitectureAgent,
+    EvaluationAgent as EvaluationAgent,
+    ImplementationAgent as ImplementationAgent,
+    OrchestratorAgent as OrchestratorAgent,
+    SpecificationAgent as SpecificationAgent,
+    build_summary as build_summary,
+)

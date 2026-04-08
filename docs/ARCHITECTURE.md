@@ -32,6 +32,7 @@ The app follows the structure requested in the challenge prompt:
 - Runs the agent pipeline
 - Produces ranking, explanations, and starter tips
 - Generates one-page PDF guides
+- Supports optional GPT-4.1-backed agents with deterministic fallback
 
 ## Scaling notes
 

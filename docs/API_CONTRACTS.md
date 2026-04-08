@@ -29,9 +29,19 @@ Response:
   "summary": "For \"I need to build a resume but I have no design skills,\" start with Canva, LinkedIn, and Google Docs so you can move from exploration into your first practical step.",
   "results": [],
   "agentTrace": [],
+  "orchestration": {
+    "mode": "heuristic",
+    "milestones": [],
+    "iterations": [],
+    "assumptions": [],
+    "missingRequirements": [],
+    "serviceBoundaries": [],
+    "architectureNotes": []
+  },
   "meta": {
     "cache": "miss",
-    "persistenceMode": "memory"
+    "persistenceMode": "memory",
+    "agentMode": "heuristic"
   }
 }
 ```

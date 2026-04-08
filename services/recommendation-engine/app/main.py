@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Query, Response
 
-from .agents import OrchestratorAgent, build_summary
+from .agent_runtime import OrchestratorAgent, build_summary
 from .knowledgebase import TOOLS
 from .models import SearchRequest, SearchResponse
 from .pdf_guides import build_starter_pdf
@@ -13,17 +13,22 @@ orchestrator = OrchestratorAgent()
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "tools": len(TOOLS)}
+    return {
+        "status": "ok",
+        "tools": len(TOOLS),
+        "agentMode": orchestrator.runtime.mode,
+    }
 
 
 @app.post("/search", response_model=SearchResponse)
 def search_tools(payload: SearchRequest) -> SearchResponse:
-    recommendations, trace = orchestrator.run(payload.query, payload.limit)
+    recommendations, trace, orchestration = orchestrator.run(payload.query, payload.limit)
     return SearchResponse(
         query=payload.query,
         summary=build_summary(payload.query, recommendations),
         results=recommendations,
         agentTrace=trace,
+        orchestration=orchestration,
     )
 
 

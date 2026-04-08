@@ -55,6 +55,7 @@ Copy these files if you want custom settings:
 
 - `apps/web/.env.example`
 - `services/node-api/.env.example`
+- `services/recommendation-engine/.env.example`
 
 ### 5. Run the full stack
 
@@ -81,11 +82,15 @@ Services:
 ## Architecture docs
 
 - [Product requirements](./docs/PRD.md)
+- [Feature breakdown](./docs/FEATURE_BREAKDOWN.md)
 - [API contracts](./docs/API_CONTRACTS.md)
 - [System architecture](./docs/ARCHITECTURE.md)
+- [Database schema](./docs/DATABASE_SCHEMA.md)
+- [Evaluation notes](./docs/EVALUATION.md)
 
 ## Notes
 
 - The tool catalog is intentionally hardcoded for challenge speed and reliability.
 - The codebase includes comments marking future scaling points for external ingestion, richer ranking, and live API integrations.
-- The GPT-4.1 requirement from the prompt is represented as an extensibility point in the agent layer; the default local mode uses deterministic heuristics so the app works without external API keys.
+- Every agent can run in optional GPT-4.1 mode when `OPENAI_API_KEY` is set in `services/recommendation-engine/.env.example`.
+- The local default stays deterministic so the app still works without external API keys.
