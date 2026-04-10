@@ -12,7 +12,39 @@ import {
 const app = express();
 const cache = new TtlCache(config.cacheTtlMs);
 
-app.use(cors());
+function buildCorsOptions() {
+  if (config.corsOrigins === "*") {
+    return { origin: true };
+  }
+
+  const allowedOrigins = new Set(config.corsOrigins);
+  return {
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+    },
+  };
+}
+
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), config.requestTimeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+app.use(cors(buildCorsOptions()));
 app.use(express.json());
 
 app.get("/api/health", (_request, response) => {
@@ -30,7 +62,10 @@ app.get("/api/sessions/recent", async (_request, response) => {
 
 app.post("/api/search", async (request, response) => {
   const query = String(request.body?.query ?? "").trim();
-  const limit = Number(request.body?.limit ?? 8);
+  const parsedLimit = Number.parseInt(String(request.body?.limit ?? config.defaultSearchLimit), 10);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(Math.max(parsedLimit, 1), config.maxSearchLimit)
+    : config.defaultSearchLimit;
 
   if (!query) {
     response.status(400).json({ error: "Query is required." });
@@ -53,7 +88,7 @@ app.post("/api/search", async (request, response) => {
   }
 
   try {
-    const upstream = await fetch(`${config.fastApiBaseUrl}/search`, {
+    const upstream = await fetchWithTimeout(`${config.fastApiBaseUrl}/search`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -95,7 +130,7 @@ app.get("/api/guides/:slug.pdf", async (request, response) => {
   const slug = request.params.slug;
 
   try {
-    const upstream = await fetch(
+    const upstream = await fetchWithTimeout(
       `${config.fastApiBaseUrl}/guides/${encodeURIComponent(slug)}.pdf?query=${encodeURIComponent(query)}`,
     );
 
@@ -119,8 +154,8 @@ app.get("/api/guides/:slug.pdf", async (request, response) => {
 async function bootstrap() {
   await initializePersistence();
 
-  app.listen(config.port, () => {
-    console.log(`Node API listening on http://localhost:${config.port}`);
+  app.listen(config.port, config.host, () => {
+    console.log(`Node API listening on http://${config.host}:${config.port}`);
   });
 }
 

@@ -4,10 +4,12 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
+from .config import settings
+
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=3)
-    limit: int = Field(default=8, ge=1, le=12)
+    limit: int = Field(default=settings.default_search_limit, ge=1, le=settings.max_search_limit)
 
 
 class Tool(BaseModel):

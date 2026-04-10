@@ -10,13 +10,13 @@ const guidedPrompts = [
 ];
 
 const brandHighlights = [
-  "Beginner-friendly recommendations",
-  "Popularity-weighted ranking",
-  "Starter PDFs for first-time users",
+  "Simple recommendations",
+  "Direct site and app links",
+  "Starter PDFs for first steps",
 ];
 
 function App() {
-  const [query, setQuery] = useState(guidedPrompts[0]);
+  const [query, setQuery] = useState("");
   const [resultsState, setResultsState] = useState(null);
   const [recentQueries, setRecentQueries] = useState([]);
   const [showAll, setShowAll] = useState(false);
@@ -90,19 +90,11 @@ function App() {
         <section className="hero">
           <div className="hero-copy">
             <p className="eyebrow">Synchronized Applications Recommender Knowledgebases Search</p>
-            <h1>SARKSearch turns vague goals into useful tools you can start today.</h1>
+            <h1>Don&apos;t know what site or app you need? Ask SARKSearch.</h1>
             <p className="hero-text">
-              Type what you want to do in plain English. The agent pipeline will translate it into a
-              ranked shortlist of tools, explain the fit, and hand you a first-step PDF for each one.
+              Describe your goal in plain English and get a short list of beginner-friendly tools you can
+              try right away.
             </p>
-
-            <div className="highlight-row" aria-label="Product highlights">
-              {brandHighlights.map((item) => (
-                <span key={item} className="highlight-pill">
-                  {item}
-                </span>
-              ))}
-            </div>
 
             <form
               className="search-panel"
@@ -112,70 +104,59 @@ function App() {
               }}
             >
               <label className="search-label" htmlFor="query">
-                What are you trying to do?
+                What do you want help with?
               </label>
               <textarea
                 id="query"
                 value={query}
                 rows={3}
-                placeholder="I want to get a job, but I don't know where to start."
+                placeholder="I want to get a job, but I do not know where to start."
                 onChange={(event) => setQuery(event.target.value)}
               />
               <div className="search-actions">
                 <button type="submit" disabled={isPending}>
-                  {isPending ? "Thinking..." : "Find my tools"}
+                  {isPending ? "Searching..." : "Search SARKSearch"}
                 </button>
-                <span className="subtle-copy">Top results are ranked by fit, then popularity.</span>
+                <span className="subtle-copy">Search first, then open the tools and guides that feel most useful.</span>
               </div>
             </form>
 
-            <div className="guided-prompts">
-              {visiblePrompts.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  className="prompt-pill"
-                  onClick={() => {
-                    setQuery(prompt);
-                    runSearch(prompt);
-                  }}
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-
             {error ? <p className="error-text">{error}</p> : null}
-          </div>
 
-          <div className="hero-panel">
-            <div className="panel-title-row">
-              <p className="panel-kicker">Agent pipeline</p>
-              <span className="panel-status">Live</span>
-            </div>
-            <ol className="pipeline-list">
-              <li>Specification agent translates the user goal into structured intent.</li>
-              <li>Architecture agent builds a search and ranking plan.</li>
-              <li>Implementation agent assembles and scores tool matches.</li>
-              <li>Evaluation agent checks confidence and retries when coverage is weak.</li>
-            </ol>
-            <div className="hero-grid">
-              <article>
-                <span>40</span>
-                <p>Curated tools</p>
-              </article>
-              <article>
-                <span>5</span>
-                <p>Primary results</p>
-              </article>
-              <article>
-                <span>PDF</span>
-                <p>Starter guide per tool</p>
-              </article>
-              <article>
-                <span>TTL</span>
-                <p>Node cache for repeated searches</p>
-              </article>
+            <div className="support-grid">
+              <section className="support-panel">
+                <p className="panel-kicker">Popular starting points</p>
+                <div className="guided-prompts">
+                  {visiblePrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="prompt-pill"
+                      onClick={() => {
+                        setQuery(prompt);
+                        runSearch(prompt);
+                      }}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="support-panel">
+                <p className="panel-kicker">What you get</p>
+                <div className="highlight-row" aria-label="Product highlights">
+                  {brandHighlights.map((item) => (
+                    <span key={item} className="highlight-pill">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+                <p className="support-copy">
+                  Results are meant to be easy to act on, not overwhelming. Start with one tool, then expand if
+                  you need more options.
+                </p>
+              </section>
             </div>
           </div>
         </section>
@@ -185,19 +166,13 @@ function App() {
             <div className="section-heading">
               <div>
                 <p className="panel-kicker">Recommendations</p>
-                <h2>Ranked tools for the goal in front of you</h2>
+                <h2>Suggested sites and apps for your goal</h2>
               </div>
-              {resultsState?.meta ? (
-                <p className="meta-pill">
-                  Cache: {resultsState.meta.cache} | Persistence: {resultsState.meta.persistenceMode} | Agent mode:{" "}
-                  {resultsState.meta.agentMode}
-                </p>
-              ) : null}
             </div>
 
             {!resultsState ? (
               <div className="empty-state">
-                <p>Start with a guided prompt or describe your goal in your own words.</p>
+                <p>Search for a goal above to get a short list of tools you can try next.</p>
               </div>
             ) : (
               <>
@@ -254,126 +229,34 @@ function App() {
             )}
           </div>
 
-          <aside className="inspector">
-            <section className="inspector-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="panel-kicker">Why these matches</p>
-                  <h2>Agent trace</h2>
-                </div>
+          <section className="recent-panel">
+            <div className="section-heading">
+              <div>
+                <p className="panel-kicker">Recent searches</p>
+                <h2>Jump back into something you already explored</h2>
               </div>
+            </div>
 
-              {resultsState?.agentTrace?.length ? (
-                <ol className="trace-list">
-                  {resultsState.agentTrace.map((item) => (
-                    <li key={`${item.agent}-${item.detail}`}>
-                      <div className="trace-head">
-                        <strong>{item.agent}</strong>
-                        <span>{item.status}</span>
-                      </div>
-                      <p>{item.detail}</p>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="empty-copy">Run a search to see how the recommendation engine reasoned about it.</p>
-              )}
-            </section>
-
-            <section className="inspector-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="panel-kicker">Orchestration</p>
-                  <h2>Milestones and refinement loop</h2>
-                </div>
+            {recentQueries.length ? (
+              <div className="recent-list">
+                {recentQueries.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className="recent-item"
+                    onClick={() => {
+                      setQuery(item);
+                      runSearch(item);
+                    }}
+                  >
+                    {item}
+                  </button>
+                ))}
               </div>
-
-              {resultsState?.orchestration ? (
-                <>
-                  <div className="mini-section">
-                    <p className="mini-label">Milestones</p>
-                    <ol className="trace-list compact-list">
-                      {(resultsState.orchestration.milestones ?? []).map((item) => (
-                        <li key={`${item.owner}-${item.name}`}>
-                          <div className="trace-head">
-                            <strong>{item.name}</strong>
-                            <span>{item.status}</span>
-                          </div>
-                          <p>{item.detail}</p>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-
-                  <div className="mini-section">
-                    <p className="mini-label">Iteration log</p>
-                    <ol className="trace-list compact-list">
-                      {(resultsState.orchestration.iterations ?? []).map((item) => (
-                        <li key={`${item.iteration}-${item.stage}-${item.detail}`}>
-                          <div className="trace-head">
-                            <strong>
-                              Iteration {item.iteration}: {item.stage}
-                            </strong>
-                            <span>{item.status}</span>
-                          </div>
-                          <p>{item.detail}</p>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-
-                  <div className="mini-section">
-                    <p className="mini-label">Architecture notes</p>
-                    <div className="detail-list">
-                      {(resultsState.orchestration.serviceBoundaries ?? []).map((item) => (
-                        <p key={item}>{item}</p>
-                      ))}
-                      {(resultsState.orchestration.architectureNotes ?? []).map((item) => (
-                        <p key={item}>{item}</p>
-                      ))}
-                      {(resultsState.orchestration.assumptions ?? []).map((item) => (
-                        <p key={item}>Assumption: {item}</p>
-                      ))}
-                      {(resultsState.orchestration.missingRequirements ?? []).map((item) => (
-                        <p key={item}>Open requirement: {item}</p>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <p className="empty-copy">Milestones and iteration logs will appear after the first search.</p>
-              )}
-            </section>
-
-            <section className="inspector-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="panel-kicker">Momentum</p>
-                  <h2>Recent searches</h2>
-                </div>
-              </div>
-
-              {recentQueries.length ? (
-                <div className="recent-list">
-                  {recentQueries.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      className="recent-item"
-                      onClick={() => {
-                        setQuery(item);
-                        runSearch(item);
-                      }}
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty-copy">Your latest search terms will appear here after the first run.</p>
-              )}
-            </section>
-          </aside>
+            ) : (
+              <p className="empty-copy">Your recent searches will show up here after the first search.</p>
+            )}
+          </section>
         </section>
       </main>
     </div>

@@ -59,12 +59,12 @@ export async function saveSearchSession(payload) {
   }
 
   recentSearches.unshift(record);
-  recentSearches.splice(6);
+  recentSearches.splice(config.recentSearchLimit);
 }
 
 export async function listRecentSearches() {
   if (persistenceMode === "mongo" && SearchSession) {
-    const docs = await SearchSession.find().sort({ createdAt: -1 }).limit(6).lean();
+    const docs = await SearchSession.find().sort({ createdAt: -1 }).limit(config.recentSearchLimit).lean();
     return docs.map((item) => item.query);
   }
 

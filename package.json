@@ -9,7 +9,7 @@
     "dev": "concurrently -n web,api,agents -c magenta,cyan,green \"npm run dev:web\" \"npm run dev:api\" \"npm run dev:agents\"",
     "dev:web": "npm run dev --workspace apps/web",
     "dev:api": "npm run dev --workspace services/node-api",
-    "dev:agents": ".\\.venv\\Scripts\\python -m uvicorn app.main:app --app-dir services/recommendation-engine --reload --port 8000",
+    "dev:agents": ".\\.venv\\Scripts\\python services/recommendation-engine/run_dev.py",
     "build": "npm run build --workspace apps/web",
     "start:api": "npm run start --workspace services/node-api",
     "install:python": ".\\.venv\\Scripts\\python -m pip install -r services/recommendation-engine/requirements.txt"

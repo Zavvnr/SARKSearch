@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Tuple
 
-from .knowledgebase import TOOLS
+from .knowledgebase import TOOLS as LOCAL_TOOLS
 from .llm_runtime import OptionalLLMRuntime
 from .models import (
     AgentTraceItem,
@@ -61,7 +61,7 @@ DEFAULT_SERVICE_BOUNDARIES = [
 
 DEFAULT_ARCHITECTURE_NOTES = [
     "FastAPI preprocesses plain-English input before the React UI renders results.",
-    "The knowledgebase stays hardcoded for MVP speed, but the catalog can move into MongoDB or a CMS later.",
+    "The catalog can stay local for reliability or be augmented by external provider data.",
     "Caching belongs in the Node gateway so repeated prompts do not recompute recommendations.",
 ]
 
@@ -164,11 +164,11 @@ class ArchitectureAgent:
     def __init__(self, runtime: OptionalLLMRuntime) -> None:
         self.runtime = runtime
 
-    def run(self, specification: Specification) -> Tuple[ArchitecturePlan, AgentTraceItem]:
+    def run(self, specification: Specification, tools: Sequence[Tool]) -> Tuple[ArchitecturePlan, AgentTraceItem]:
         categories = sorted(
             {
                 tool.category
-                for tool in TOOLS
+                for tool in tools
                 if any(keyword in tool.tags for keyword in specification.expanded_keywords)
             }
         )
@@ -283,10 +283,15 @@ class ImplementationAgent:
             starterTip=tool.starter_steps[0],
         )
 
-    def run(self, specification: Specification, limit: int) -> Tuple[List[Recommendation], AgentTraceItem, float]:
+    def run(
+        self,
+        specification: Specification,
+        limit: int,
+        tools: Sequence[Tool],
+    ) -> Tuple[List[Recommendation], AgentTraceItem, float]:
         ranked = []
 
-        for tool in TOOLS:
+        for tool in tools:
             score, matches = self._score_tool(
                 tool,
                 specification.keywords,
@@ -374,7 +379,7 @@ class ImplementationAgent:
         return recommendations, AgentTraceItem(
             agent="ImplementationAgent",
             status="completed",
-            detail=f"Ranked {len(TOOLS)} tools and assembled the top {len(recommendations)} matches.",
+            detail=f"Ranked {len(tools)} tools and assembled the top {len(recommendations)} matches.",
             mode=mode,
         ), min(max(confidence, 0.0), 1.0)
 
@@ -432,7 +437,9 @@ class OrchestratorAgent:
         self,
         query: str,
         limit: int,
+        tools: Sequence[Tool] | None = None,
     ) -> Tuple[List[Recommendation], List[AgentTraceItem], OrchestrationReport]:
+        catalog_tools = list(tools or LOCAL_TOOLS)
         trace: List[AgentTraceItem] = []
         iterations: List[IterationLogEntry] = [
             IterationLogEntry(
@@ -476,7 +483,7 @@ class OrchestratorAgent:
             )
         )
 
-        architecture_plan, architecture_trace = self.architecture_agent.run(specification)
+        architecture_plan, architecture_trace = self.architecture_agent.run(specification, catalog_tools)
         trace.append(architecture_trace)
         iterations.append(
             IterationLogEntry(
@@ -487,7 +494,11 @@ class OrchestratorAgent:
             )
         )
 
-        recommendations, implementation_trace, confidence = self.implementation_agent.run(specification, limit)
+        recommendations, implementation_trace, confidence = self.implementation_agent.run(
+            specification,
+            limit,
+            catalog_tools,
+        )
         trace.append(implementation_trace)
         iterations.append(
             IterationLogEntry(
@@ -521,6 +532,7 @@ class OrchestratorAgent:
             recommendations, retried_trace, retried_confidence = self.implementation_agent.run(
                 widened_specification,
                 limit,
+                catalog_tools,
             )
             trace.append(
                 AgentTraceItem(
@@ -567,7 +579,7 @@ class OrchestratorAgent:
                     name="Implementation",
                     owner="ImplementationAgent",
                     status="completed",
-                    detail="Ranked the knowledgebase and prepared starter guidance for the returned tools.",
+                    detail="Ranked the active catalog and prepared starter guidance for the returned tools.",
                 ),
                 MilestoneStatus(
                     name="Evaluation",
