@@ -41,7 +41,7 @@ const maxSearchLimit = getNumber("MAX_SEARCH_LIMIT", 12, defaultSearchLimit);
 export const config = {
   host: getString("HOST", "127.0.0.1"),
   port: getNumber("PORT", 4000),
-  fastApiBaseUrl: getString("FASTAPI_BASE_URL", "http://127.0.0.1:8000").replace(/\/+$/, ""),
+  fastApiBaseUrl: getString("ENGINE_URL", getString("FASTAPI_BASE_URL", "http://127.0.0.1:8000")).replace(/\/+$/, ""),
   cacheTtlMs: getNumber("CACHE_TTL_MS", 300000),
   requestTimeoutMs: getNumber("REQUEST_TIMEOUT_MS", 10000),
   corsOrigins: getOrigins("CORS_ORIGIN", "http://127.0.0.1:5173,http://localhost:5173"),

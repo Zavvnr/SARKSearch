@@ -1,4 +1,4 @@
-Synchronized Applications Recommender Knowledgebases Search (SARKSearch) project was made as a part of the "Codex Creator Challenge", serving as a discovery engine that translates a beginner's plain-English problem into a curated list of tools.
+Synchronized Applications Recommender Knowledgebases Search (SARKSearch) project was made as a part of the Handshake x OpenAI "Codex Creator Challenge", serving as a discovery engine that translates a beginner's plain-English problem into a curated list of tools.
 
 # SARKSearch
 

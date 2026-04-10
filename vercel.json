@@ -1,0 +1,20 @@
+{
+  "experimentalServices": {
+    "web": {
+      "entrypoint": "apps/web",
+      "routePrefix": "/"
+    },
+    "gateway": {
+      "entrypoint": "services/node-api/api/index.js",
+      "routePrefix": "/gateway"
+    },
+    "engine": {
+      "entrypoint": "services/recommendation-engine/api/index.py",
+      "routePrefix": "/engine",
+      "includeFiles": [
+        "services/recommendation-engine/app/**",
+        "services/recommendation-engine/requirements.txt"
+      ]
+    }
+  }
+}

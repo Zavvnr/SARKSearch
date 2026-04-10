@@ -26,7 +26,7 @@ def health() -> dict:
 
 @app.post("/search", response_model=SearchResponse)
 def search_tools(payload: SearchRequest) -> SearchResponse:
-    snapshot = tool_catalog.get_snapshot()
+    snapshot = tool_catalog.get_snapshot(payload.query)
     recommendations, trace, orchestration = orchestrator.run(payload.query, payload.limit, snapshot.tools)
     return SearchResponse(
         query=payload.query,

@@ -65,6 +65,7 @@ class Settings:
         self.catalog_include_local = _get_bool("CATALOG_INCLUDE_LOCAL", True)
         self.catalog_cache_ttl_seconds = _get_int("CATALOG_CACHE_TTL_SECONDS", 3600)
         self.catalog_max_items = _get_int("CATALOG_MAX_ITEMS", 60)
+        self.query_aware_catalog = _get_bool("QUERY_AWARE_CATALOG", True)
         self.product_hunt_token = _get_string("PRODUCT_HUNT_TOKEN", "")
         self.product_hunt_topics = _get_string(
             "PRODUCT_HUNT_TOPICS",
@@ -73,6 +74,9 @@ class Settings:
         self.product_hunt_posts_per_topic = _get_int("PRODUCT_HUNT_POSTS_PER_TOPIC", 12)
         self.product_hunt_posted_after_days = _get_int("PRODUCT_HUNT_POSTED_AFTER_DAYS", 365)
         self.product_hunt_featured_only = _get_bool("PRODUCT_HUNT_FEATURED_ONLY", True)
+        self.college_scorecard_api_key = _get_string("COLLEGE_SCORECARD_API_KEY", "")
+        self.college_scorecard_per_page = _get_int("COLLEGE_SCORECARD_PER_PAGE", 8)
+        self.codeforces_contest_limit = _get_int("CODEFORCES_CONTEST_LIMIT", 8)
         self.openai_api_key = _get_string("OPENAI_API_KEY", "")
         self.openai_model = _get_string("OPENAI_MODEL", "gpt-4.1")
 

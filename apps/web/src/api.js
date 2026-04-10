@@ -3,11 +3,24 @@ function parsePositiveInteger(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function normalizeBaseUrl(value) {
-  return String(value ?? "http://localhost:4000").replace(/\/+$/, "");
+function resolveDefaultBaseUrl() {
+  if (typeof window === "undefined") {
+    return "http://localhost:4000";
+  }
+
+  const { hostname } = window.location;
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "http://localhost:4000";
+  }
+
+  return "/gateway";
 }
 
-const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
+function normalizeBaseUrl(value) {
+  return String(value ?? resolveDefaultBaseUrl()).replace(/\/+$/, "");
+}
+
+const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL || resolveDefaultBaseUrl());
 const DEFAULT_RESULT_LIMIT = parsePositiveInteger(import.meta.env.VITE_DEFAULT_RESULT_LIMIT, 8);
 
 async function parseResponse(response) {

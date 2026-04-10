@@ -51,6 +51,9 @@ SYNONYM_GROUPS = {
     "friends": ["friends", "community", "chat", "social", "groups"],
     "organize": ["organize", "planning", "tasks", "deadline", "schedule", "notes"],
     "design": ["design", "creative", "template", "visual", "portfolio"],
+    "education": ["education", "college", "university", "school", "degree", "certificate", "campus"],
+    "competition": ["competition", "competitions", "contest", "contests", "hackathon", "olympiad"],
+    "programming": ["programming", "coding", "developer", "algorithms", "leetcode", "codeforces"],
 }
 
 DEFAULT_SERVICE_BOUNDARIES = [
@@ -66,6 +69,17 @@ DEFAULT_ARCHITECTURE_NOTES = [
 ]
 
 
+def _slugify(value: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "-" for char in value)
+    collapsed = "-".join(part for part in cleaned.split("-") if part)
+    return collapsed or "tool"
+
+
+def _icon_for_name(name: str) -> str:
+    pieces = [part[0] for part in name.split() if part]
+    return ("".join(pieces[:2]) or name[:2] or "TL").upper()
+
+
 def tokenize(text: str) -> List[str]:
     lowered = "".join(char.lower() if char.isalnum() else " " for char in text)
     return [token for token in lowered.split() if token and token not in STOP_WORDS]
@@ -78,6 +92,73 @@ def _coerce_list(raw: object, fallback: Sequence[str], lowercase: bool = True) -
     if lowercase:
         cleaned = [item.lower() for item in cleaned]
     return cleaned or list(fallback)
+
+
+def _build_web_discovery_recommendations(raw_results: Sequence[object], limit: int) -> List[Recommendation]:
+    recommendations: List[Recommendation] = []
+    seen: set[str] = set()
+
+    for raw_item in raw_results:
+        if not isinstance(raw_item, dict):
+            continue
+
+        name = str(raw_item.get("name") or "").strip()
+        url = str(raw_item.get("url") or "").strip()
+        description = str(raw_item.get("description") or "").strip()
+        if not name or not url.startswith("http") or not description:
+            continue
+
+        slug = str(raw_item.get("slug") or _slugify(name)).strip() or _slugify(name)
+        dedupe_key = slug.lower()
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        recommendations.append(
+            Recommendation(
+                slug=slug,
+                name=name,
+                category=str(raw_item.get("category") or "Software / Discovery"),
+                popularity=str(raw_item.get("popularity") or "Popular web match"),
+                description=description,
+                url=url,
+                icon=str(raw_item.get("icon") or _icon_for_name(name)),
+                relevanceReason=str(
+                    raw_item.get("relevance_reason")
+                    or "Popular on the web for this goal and easier to try than niche alternatives."
+                ),
+                starterTip=str(
+                    raw_item.get("starter_tip")
+                    or "Open the official site and try one small task tied to your goal."
+                ),
+            )
+        )
+
+        if len(recommendations) >= limit:
+            break
+
+    return recommendations
+
+
+def _merge_recommendations(
+    primary: Sequence[Recommendation],
+    secondary: Sequence[Recommendation],
+    limit: int,
+) -> List[Recommendation]:
+    merged: List[Recommendation] = []
+    seen: set[str] = set()
+
+    for collection in (primary, secondary):
+        for item in collection:
+            key = item.slug.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+            if len(merged) >= limit:
+                return merged
+
+    return merged
 
 
 @dataclass
@@ -521,44 +602,98 @@ class OrchestratorAgent:
         )
 
         if retry_required:
-            widened_specification = Specification(
-                original_query=specification.original_query,
-                keywords=specification.keywords,
-                expanded_keywords=sorted(set(specification.expanded_keywords + ["beginner", "free", "community"])),
-                needs=specification.needs,
-                assumptions=specification.assumptions,
-                missing_requirements=specification.missing_requirements,
-            )
-            recommendations, retried_trace, retried_confidence = self.implementation_agent.run(
-                widened_specification,
+            web_discovery = None
+            discover_popular_tools = getattr(self.runtime, "discover_popular_tools", None)
+            if callable(discover_popular_tools):
+                web_discovery = discover_popular_tools(
+                    query=specification.original_query,
+                    limit=limit,
+                    current_recommendations=[item.model_dump() for item in recommendations],
+                )
+
+            live_web_results = _build_web_discovery_recommendations(
+                web_discovery.get("results", []) if isinstance(web_discovery, dict) else [],
                 limit,
-                catalog_tools,
             )
-            trace.append(
-                AgentTraceItem(
-                    agent="OrchestratorAgent",
-                    status="retried",
-                    detail=f"Triggered one refinement pass and raised confidence to {retried_confidence:.2f}.",
-                    mode=self.runtime.mode,
+
+            if live_web_results:
+                recommendations = _merge_recommendations(live_web_results, recommendations, limit)
+                web_detail = str(
+                    web_discovery.get("summary")
+                    or "Used live web discovery to widen the shortlist after the heuristic pass came back narrow."
                 )
-            )
-            trace.append(retried_trace)
-            iterations.append(
-                IterationLogEntry(
-                    iteration=2,
-                    stage="OrchestratorAgent",
-                    status="retried",
-                    detail="Expanded the keyword set with beginner-friendly fallback terms.",
+                web_mode = str(web_discovery.get("_model") or self.runtime.mode)
+                trace.append(
+                    AgentTraceItem(
+                        agent="OrchestratorAgent",
+                        status="retried",
+                        detail="Escalated the low-confidence query to live web discovery for fresher tool coverage.",
+                        mode=web_mode,
+                    )
                 )
-            )
-            iterations.append(
-                IterationLogEntry(
-                    iteration=2,
-                    stage="ImplementationAgent",
-                    status="completed",
-                    detail=retried_trace.detail,
+                trace.append(
+                    AgentTraceItem(
+                        agent="WebDiscoveryAgent",
+                        status="completed",
+                        detail=web_detail,
+                        mode=web_mode,
+                    )
                 )
-            )
+                iterations.append(
+                    IterationLogEntry(
+                        iteration=2,
+                        stage="OrchestratorAgent",
+                        status="retried",
+                        detail="Escalated from local heuristics to live web discovery because the first pass was narrow.",
+                    )
+                )
+                iterations.append(
+                    IterationLogEntry(
+                        iteration=2,
+                        stage="WebDiscoveryAgent",
+                        status="completed",
+                        detail=web_detail,
+                    )
+                )
+            else:
+                widened_specification = Specification(
+                    original_query=specification.original_query,
+                    keywords=specification.keywords,
+                    expanded_keywords=sorted(set(specification.expanded_keywords + ["beginner", "free", "community"])),
+                    needs=specification.needs,
+                    assumptions=specification.assumptions,
+                    missing_requirements=specification.missing_requirements,
+                )
+                recommendations, retried_trace, retried_confidence = self.implementation_agent.run(
+                    widened_specification,
+                    limit,
+                    catalog_tools,
+                )
+                trace.append(
+                    AgentTraceItem(
+                        agent="OrchestratorAgent",
+                        status="retried",
+                        detail=f"Triggered one refinement pass and raised confidence to {retried_confidence:.2f}.",
+                        mode=self.runtime.mode,
+                    )
+                )
+                trace.append(retried_trace)
+                iterations.append(
+                    IterationLogEntry(
+                        iteration=2,
+                        stage="OrchestratorAgent",
+                        status="retried",
+                        detail="Expanded the keyword set with beginner-friendly fallback terms.",
+                    )
+                )
+                iterations.append(
+                    IterationLogEntry(
+                        iteration=2,
+                        stage="ImplementationAgent",
+                        status="completed",
+                        detail=retried_trace.detail,
+                    )
+                )
 
         report = OrchestrationReport(
             mode=self.runtime.mode,
