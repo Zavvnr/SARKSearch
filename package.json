@@ -11,6 +11,8 @@
     "dev:api": "npm run dev --workspace services/node-api",
     "dev:agents": ".\\.venv\\Scripts\\python services/recommendation-engine/run_dev.py",
     "build": "npm run build --workspace apps/web",
+    "test:node-api": "npm run test --workspace services/node-api",
+    "test:agents": ".\\.venv\\Scripts\\python -B -m unittest discover services/recommendation-engine/tests",
     "start:api": "npm run start --workspace services/node-api",
     "install:python": ".\\.venv\\Scripts\\python -m pip install -r services/recommendation-engine/requirements.txt"
   },

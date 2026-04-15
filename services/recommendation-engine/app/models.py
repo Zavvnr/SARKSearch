@@ -42,6 +42,7 @@ class AgentTraceItem(BaseModel):
     status: str
     detail: str
     mode: str = "heuristic"
+    durationMs: float = 0.0
 
 
 class MilestoneStatus(BaseModel):
@@ -58,6 +59,11 @@ class IterationLogEntry(BaseModel):
     detail: str
 
 
+class StageTiming(BaseModel):
+    stage: str
+    durationMs: float
+
+
 class OrchestrationReport(BaseModel):
     mode: str
     milestones: List[MilestoneStatus]
@@ -66,6 +72,8 @@ class OrchestrationReport(BaseModel):
     missingRequirements: List[str]
     serviceBoundaries: List[str]
     architectureNotes: List[str]
+    timings: List[StageTiming] = Field(default_factory=list)
+    totalDurationMs: float = 0.0
 
 
 class SearchResponse(BaseModel):

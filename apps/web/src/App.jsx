@@ -3,7 +3,7 @@ import { API_BASE_URL, fetchRecentSearches, searchTools } from "./api";
 
 const guidedPrompts = [
   "I need to build a resume but I have no design skills",
-  "How should I obtain education in Wisconsin?",
+  "How should I obtain education in America?",
   "I want to learn Python from scratch",
   "Where should I go to find programming competition?",
   "Find tools for my first research paper",
@@ -70,24 +70,9 @@ function getInitialTheme() {
 
 const credits = [
   {
-    name: "Product Hunt",
-    href: "https://www.producthunt.com/",
-    detail: "optional catalog source",
-  },
-  {
     name: "OpenAI",
     href: "https://openai.com/",
-    detail: "optional recommendation enhancement",
-  },
-  {
-    name: "College Scorecard",
-    href: "https://collegescorecard.ed.gov/data/api/",
-    detail: "education search data",
-  },
-  {
-    name: "Codeforces",
-    href: "https://codeforces.com/apiHelp",
-    detail: "programming competition data",
+    detail: "LLM Brain recommendations",
   },
   {
     name: "MongoDB",
@@ -115,6 +100,37 @@ const credits = [
     detail: "deployment platform",
   },
 ];
+
+function isUrlLike(value) {
+  return /^https?:\/\//i.test(String(value ?? "").trim());
+}
+
+function getToolInitials(name) {
+  const words = String(name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return (words.map((word) => word[0]).join("").slice(0, 2) || "TL").toUpperCase();
+}
+
+function ToolMark({ tool }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const rawIcon = String(tool.icon ?? "").trim();
+  const canUseImage = isUrlLike(rawIcon) && !imageFailed;
+  const fallbackIcon = rawIcon && !isUrlLike(rawIcon) && rawIcon.length <= 4
+    ? rawIcon
+    : getToolInitials(tool.name);
+
+  return (
+    <div className="tool-mark" aria-hidden="true">
+      {canUseImage ? (
+        <img src={rawIcon} alt="" onError={() => setImageFailed(true)} />
+      ) : (
+        <span>{fallbackIcon}</span>
+      )}
+    </div>
+  );
+}
 
 function BrandMark() {
   return (
@@ -199,6 +215,7 @@ function App() {
   }
 
   const visibleResults = resultsState?.results?.slice(0, showAll ? undefined : 5) ?? [];
+  const topResultNames = (resultsState?.results ?? []).slice(0, 3).map((tool) => tool.name);
 
   return (
     <div className="page-shell">
@@ -274,41 +291,43 @@ function App() {
 
             {error ? <p className="error-text">{error}</p> : null}
 
-            <div className="support-grid">
-              <section className="support-panel">
-                <p className="panel-kicker">Popular starting points</p>
-                <div className="guided-prompts">
-                  {visiblePrompts.map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      className="prompt-pill"
-                      onClick={() => {
-                        setQuery(prompt);
-                        runSearch(prompt);
-                      }}
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
-              </section>
+            {!resultsState ? (
+              <div className="support-grid">
+                <section className="support-panel">
+                  <p className="panel-kicker">Popular Starting Points</p>
+                  <div className="guided-prompts">
+                    {visiblePrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className="prompt-pill"
+                        onClick={() => {
+                          setQuery(prompt);
+                          runSearch(prompt);
+                        }}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </section>
 
-              <section className="support-panel">
-                <p className="panel-kicker">What you get</p>
-                <div className="highlight-row" aria-label="Product highlights">
-                  {brandHighlights.map((item) => (
-                    <span key={item} className="highlight-pill">
-                      {item}
-                    </span>
-                  ))}
-                </div>
-                <p className="support-copy">
-                  Results are meant to be easy to act on, not overwhelming. Start with one tool, then expand if
-                  you need more options.
-                </p>
-              </section>
-            </div>
+                <section className="support-panel">
+                  <p className="panel-kicker">What you get</p>
+                  <div className="highlight-row" aria-label="Product highlights">
+                    {brandHighlights.map((item) => (
+                      <span key={item} className="highlight-pill">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="support-copy">
+                    Results are meant to be easy to act on, not overwhelming. Start with one tool, then expand if
+                    you need more options.
+                  </p>
+                </section>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -316,8 +335,8 @@ function App() {
           <div className="results-column">
             <div className="section-heading">
               <div>
-                <p className="panel-kicker">Recommendations</p>
-                <h2>Suggested sites and apps for your goal</h2>
+                <p className="panel-kicker">{resultsState ? "Popular Starting Points" : "Recommendations"}</p>
+                <h2>{resultsState ? "Tools you can try first" : "Suggested sites and apps for your goal"}</h2>
               </div>
             </div>
 
@@ -337,13 +356,11 @@ function App() {
                       <div className="result-rank">{String(index + 1).padStart(2, "0")}</div>
                       <div className="result-main">
                         <div className="result-headline">
-                          <div className="tool-mark" aria-hidden="true">
-                            {tool.icon}
-                          </div>
+                          <ToolMark tool={tool} />
                           <div>
                             <h3>{tool.name}</h3>
                             <p className="result-meta">
-                              {tool.category} | {tool.popularity}
+                              {tool.category} / {tool.popularity}
                             </p>
                           </div>
                         </div>
@@ -376,6 +393,25 @@ function App() {
                     {showAll ? "Show top 5" : `Show ${resultsState.results.length - 5} more`}
                   </button>
                 ) : null}
+
+                <section className="post-search-proof" aria-label="Search result confirmation">
+                  <div className="proof-panel proof-panel-primary">
+                    <p className="panel-kicker">Popular Starting Points</p>
+                    <h3>{topResultNames.length ? topResultNames.join(", ") : "Your first tools are ready"}</h3>
+                    <p>
+                      SARKSearch found practical places to begin. Open one tool first, then use the starter PDF
+                      when you want a guided first step.
+                    </p>
+                  </div>
+                  <div className="proof-panel">
+                    <p className="panel-kicker">What you get</p>
+                    <div className="proof-list">
+                      {brandHighlights.map((item) => (
+                        <span key={item}>{item}</span>
+                      ))}
+                    </div>
+                  </div>
+                </section>
               </>
             )}
           </div>

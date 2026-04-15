@@ -4,8 +4,27 @@ import { fileURLToPath } from "node:url";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const serviceRoot = path.resolve(currentDir, "../..");
+const envPath = process.env.SARKSEARCH_NODE_ENV_PATH || path.join(serviceRoot, ".env");
 
-dotenv.config({ path: path.join(serviceRoot, ".env") });
+export const EXAMPLE_ENV_KEYS = Object.freeze([
+  "PORT",
+  "HOST",
+  "FASTAPI_BASE_URL",
+  "CACHE_TTL_MS",
+  "REQUEST_TIMEOUT_MS",
+  "CORS_ORIGIN",
+  "MONGODB_URI",
+  "DEFAULT_SEARCH_LIMIT",
+  "MAX_SEARCH_LIMIT",
+  "RECENT_SEARCH_LIMIT",
+]);
+
+export const SUPPORTED_ENV_KEYS = Object.freeze([
+  ...EXAMPLE_ENV_KEYS,
+  "ENGINE_URL",
+]);
+
+dotenv.config({ path: envPath });
 
 function getString(name, fallback = "") {
   const value = String(process.env[name] ?? fallback).trim();
@@ -35,18 +54,22 @@ function getOrigins(name, fallback) {
   return origins.length ? origins : fallback.split(",").map((item) => item.trim());
 }
 
-const defaultSearchLimit = getNumber("DEFAULT_SEARCH_LIMIT", 8);
-const maxSearchLimit = getNumber("MAX_SEARCH_LIMIT", 12, defaultSearchLimit);
+export function buildConfig() {
+  const defaultSearchLimit = getNumber("DEFAULT_SEARCH_LIMIT", 8);
+  const maxSearchLimit = getNumber("MAX_SEARCH_LIMIT", 12, defaultSearchLimit);
 
-export const config = {
-  host: getString("HOST", "127.0.0.1"),
-  port: getNumber("PORT", 4000),
-  fastApiBaseUrl: getString("ENGINE_URL", getString("FASTAPI_BASE_URL", "http://127.0.0.1:8000")).replace(/\/+$/, ""),
-  cacheTtlMs: getNumber("CACHE_TTL_MS", 300000),
-  requestTimeoutMs: getNumber("REQUEST_TIMEOUT_MS", 10000),
-  corsOrigins: getOrigins("CORS_ORIGIN", "http://127.0.0.1:5173,http://localhost:5173"),
-  mongoDbUri: getString("MONGODB_URI", ""),
-  defaultSearchLimit: Math.min(defaultSearchLimit, maxSearchLimit),
-  maxSearchLimit,
-  recentSearchLimit: getNumber("RECENT_SEARCH_LIMIT", 6),
-};
+  return {
+    host: getString("HOST", "127.0.0.1"),
+    port: getNumber("PORT", 4000),
+    fastApiBaseUrl: getString("ENGINE_URL", getString("FASTAPI_BASE_URL", "http://127.0.0.1:8000")).replace(/\/+$/, ""),
+    cacheTtlMs: getNumber("CACHE_TTL_MS", 300000),
+    requestTimeoutMs: getNumber("REQUEST_TIMEOUT_MS", 100000),
+    corsOrigins: getOrigins("CORS_ORIGIN", "http://127.0.0.1:5173,http://localhost:5173"),
+    mongoDbUri: getString("MONGODB_URI", ""),
+    defaultSearchLimit: Math.min(defaultSearchLimit, maxSearchLimit),
+    maxSearchLimit,
+    recentSearchLimit: getNumber("RECENT_SEARCH_LIMIT", 6),
+  };
+}
+
+export const config = buildConfig();

@@ -711,4 +711,23 @@ class ToolCatalog:
         return payload.get("data", {})
 
 
-tool_catalog = ToolCatalog()
+class LLMBrainCatalog:
+    """Compatibility shim for older imports.
+
+    The active recommendation path no longer uses this module or any catalog
+    provider. Callers should use OrchestratorAgent, which asks the LLM Brain for
+    recommendation objects directly.
+    """
+
+    def get_snapshot(self, query: str | None = None) -> CatalogSnapshot:
+        return CatalogSnapshot(
+            tools=[],
+            source="llm_brain",
+            detail="Catalog providers are disabled; recommendations come from the LLM Brain.",
+        )
+
+    def get_tool_by_slug(self, slug: str) -> Tool | None:
+        return None
+
+
+tool_catalog = LLMBrainCatalog()

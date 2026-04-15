@@ -15,26 +15,24 @@ MongoDB stores completed recommendation runs through the Node.js gateway.
 - `meta`: cache and runtime metadata
 - `createdAt` / `updatedAt`: timestamps from Mongoose
 
-## Knowledgebase
+## Recommendation source
 
-The curated tool catalog is still code-backed for challenge speed and predictable ranking behavior.
+SARKSearch no longer stores a curated recommendation catalog in code or MongoDB. The FastAPI service treats GPT-5.4 as the LLM Brain knowledgebase and generates recommendation objects at request time.
 
-### Tool shape
+### Recommendation shape
 
 - `slug`
 - `name`
 - `category`
 - `popularity`
-- `popularity_score`
 - `description`
-- `tags`
 - `url`
 - `icon`
-- `starter_steps`
+- `relevanceReason`
+- `starterTip`
 
 ## Scaling path
 
-- Move the tool catalog into MongoDB or a CMS
-- Add indexes on `query`, `createdAt`, and tool tags
+- Add indexes on `query` and `createdAt`
 - Add a separate analytics collection for click-throughs and PDF opens
-- Layer embeddings or hybrid retrieval once the catalog becomes much larger
+- Add optional retrieval or source auditing later if the LLM Brain needs external grounding

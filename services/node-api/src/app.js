@@ -8,6 +8,11 @@ import {
   listRecentSearches,
   saveSearchSession,
 } from "./lib/store.js";
+import {
+  getUpstreamErrorMessage,
+  mapUpstreamStatus,
+  readUpstreamPayload,
+} from "./lib/upstream.js";
 
 const app = express();
 const cache = new TtlCache(config.cacheTtlMs);
@@ -96,21 +101,28 @@ app.post("/api/search", async (request, response) => {
       body: JSON.stringify({ query, limit }),
     });
 
+    const payload = await readUpstreamPayload(upstream);
     if (!upstream.ok) {
-      throw new Error("Recommendation engine did not respond successfully.");
+      response.status(mapUpstreamStatus(upstream.status)).json({
+        error: getUpstreamErrorMessage(
+          payload,
+          "Recommendation engine did not respond successfully.",
+        ),
+        detail: payload.detail ?? payload.raw ?? payload,
+      });
+      return;
     }
 
-    const payload = await upstream.json();
     const withGuides = {
       ...payload,
-      results: payload.results.map((item) => ({
+      results: (Array.isArray(payload.results) ? payload.results : []).map((item) => ({
         ...item,
         guideUrl: `/api/guides/${item.slug}.pdf?query=${encodeURIComponent(query)}`,
       })),
       meta: {
         cache: "miss",
         persistenceMode: getPersistenceMode(),
-        agentMode: payload.orchestration?.mode ?? "heuristic",
+        agentMode: payload.orchestration?.mode ?? "llm-brain-unavailable",
       },
     };
 
@@ -118,8 +130,11 @@ app.post("/api/search", async (request, response) => {
     await saveSearchSession(withGuides);
     response.json(withGuides);
   } catch (error) {
-    response.status(502).json({
-      error: "SARKSearch could not reach the recommendation engine.",
+    const timedOut = error.name === "AbortError";
+    response.status(timedOut ? 504 : 502).json({
+      error: timedOut
+        ? "The recommendation engine took too long to respond. Try again, or increase REQUEST_TIMEOUT_MS for slower LLM searches."
+        : "SARKSearch could not reach the recommendation engine.",
       detail: error.message,
     });
   }

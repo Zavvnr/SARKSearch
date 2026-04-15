@@ -8,7 +8,7 @@ SARKSearch is a production-style, multi-agent web application that helps beginne
 
 - `apps/web`: React single-page application for search, recommendations, and recent search visibility
 - `services/node-api`: Node.js orchestration layer with caching, FastAPI proxying, and optional MongoDB persistence
-- `services/recommendation-engine`: FastAPI preprocessing and recommendation engine with a hardcoded 40-tool knowledgebase
+- `services/recommendation-engine`: FastAPI preprocessing and recommendation engine powered by the GPT-5.4 LLM Brain
 - `docs/`: product, architecture, and API reference artifacts
 
 ## Multi-agent system
@@ -18,7 +18,7 @@ The recommendation engine uses clearly separated agents with defined responsibil
 - `OrchestratorAgent`: coordinates the full recommendation cycle and manages retries
 - `SpecificationAgent`: translates plain-English input into structured intent and constraints
 - `ArchitectureAgent`: builds a search plan and service boundaries for matching
-- `ImplementationAgent`: scores, ranks, and assembles tool recommendations
+- `LLMBrainAgent`: asks GPT-5.4 for structured recommendations from its own knowledgebase
 - `EvaluationAgent`: checks confidence, diversity, and whether another refinement pass is needed
 
 ## Stack
@@ -69,13 +69,13 @@ Default values already point the three local services at each other:
 
 - `apps/web/.env`: frontend dev host/port plus `VITE_API_BASE_URL`
 - `services/node-api/.env`: Node host/port, FastAPI base URL, cache TTL, CORS origin, optional `MONGODB_URI`
-- `services/recommendation-engine/.env`: FastAPI host/port, result limits, optional catalog provider settings, optional `OPENAI_API_KEY`, `OPENAI_MODEL`
+- `services/recommendation-engine/.env`: FastAPI host/port, result limits, `OPENAI_API_KEY`, and `OPENAI_MODEL`
 
 Notes:
 
 - Leave `MONGODB_URI` blank to use the in-memory recent-search fallback.
-- Leave `OPENAI_API_KEY` blank to keep the recommendation engine in deterministic heuristic mode.
-- Leave `CATALOG_PROVIDER=local` if you want the bundled 40-tool catalog only.
+- Set `OPENAI_API_KEY` so the LLM Brain can generate recommendations.
+- `OPENAI_MODEL` now defaults to `gpt-4o-mini` for faster, lower-cost searches.
 
 ### 5. Run the full stack
 
@@ -99,40 +99,21 @@ npm run dev:api
 
 Use these when you only need one layer at a time while debugging.
 
-## Live catalog option
+## LLM Brain recommendation mode
 
-The recommendation engine can optionally augment the bundled catalog with Product Hunt data.
+The recommendation engine no longer ranks against a bundled or external catalog. FastAPI asks GPT-5.4 to return structured recommendation objects directly from the LLM Brain.
 
-Recommended local setup:
+What this means:
 
-```env
-CATALOG_PROVIDER=product_hunt
-CATALOG_INCLUDE_LOCAL=true
-PRODUCT_HUNT_TOKEN=your_token_here
-```
-
-What this does:
-
-- Resolves Product Hunt topics from `PRODUCT_HUNT_TOPICS`
-- Pulls featured products from those topics
-- Maps them into the same internal tool model used by the recommender
-- Merges them with the local catalog unless `CATALOG_INCLUDE_LOCAL=false`
-
-Why `CATALOG_INCLUDE_LOCAL=true` is the safer default:
-
-- Product Hunt is strong for live discovery and newer products
-- The bundled catalog still covers mainstream evergreen tools that may not rank well in Product Hunt queries
-- The combined catalog gives broader coverage without losing local reliability
-
-Other APIs worth evaluating next:
-
-- G2 API for software categories, product metadata, domains, and reviews
-- StackShare GraphQL API for tool metadata and developer-focused software discovery
+- There is no hardcoded app/site database in the active recommendation path.
+- Product Hunt, College Scorecard, Codeforces, and other catalog APIs are no longer required.
+- If the OpenAI runtime is not configured, the engine returns an empty recommendation set instead of falling back to a made-up local database.
+- Starter PDFs are generated from the recommendations returned by the LLM Brain.
 
 ## Features
 
 - Beginner-friendly search with guided prompt pills
-- 40 curated tools across career, learning, research, productivity, creative, coding, finance, and community categories
+- GPT-5.4 LLM Brain recommendations across career, learning, research, productivity, creative, coding, finance, and community goals
 - Ranked top 5 results with show-more expansion
 - Contextual relevance explanations and first-step tips
 - One-page starter PDF guide for every recommended tool
@@ -150,8 +131,7 @@ Other APIs worth evaluating next:
 
 ## Notes
 
-- The tool catalog is intentionally hardcoded for challenge speed and reliability.
-- The codebase now supports an optional Product Hunt-backed catalog source with local fallback.
-- The codebase includes comments marking future scaling points for external ingestion, richer ranking, and live API integrations.
-- Every agent can run in optional GPT-4.1 mode when `OPENAI_API_KEY` is set in `services/recommendation-engine/.env`.
-- The local default stays deterministic so the app still works without external API keys.
+- The active recommendation path uses GPT-5.4 as the LLM Brain knowledgebase.
+- The codebase intentionally avoids a made-up local recommendation database.
+- Search history can still persist through MongoDB, but recommendations are generated at request time.
+- If the LLM Brain is unavailable, the app reports that configuration issue instead of returning hardcoded fallback tools.

@@ -74,3 +74,7 @@ TOOLS = [
     make_tool("geeksforgeeks", "GeeksforGeeks", "Coding / Learning", "80M+ monthly visits", 68, "Programming tutorials, examples, and interview preparation content.", ["coding", "tutorial", "python", "interview", "learn", "programming"], "https://www.geeksforgeeks.org/", "GG", ["Read one beginner tutorial and code along locally.", "Bookmark the reference page for your current topic.", "Switch from reading to building something small quickly."]),
     make_tool("mint", "Mint", "Finance / Budgeting", "Millions of personal finance users", 60, "Budgeting and spending tracker for personal finance planning.", ["budget", "finance", "money", "organize", "tracking", "beginner"], "https://mint.intuit.com/", "MN", ["Start with one monthly spending category you care about.", "Review transactions before building a detailed budget.", "Set one realistic spending target for the next month."]),
 ]
+
+# Retired for the LLM Brain architecture. Keep the symbol importable for legacy
+# modules, but do not expose a made-up local recommendation database.
+TOOLS = []

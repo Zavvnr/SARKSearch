@@ -27,8 +27,8 @@ Beginners often know their goal but not the name of the tool, category, or workf
 
 - Search box with plain-English query support
 - Guided prompt pills
-- Hardcoded knowledgebase of 30 to 50 tools
-- Ranking by relevance plus popularity
+- GPT-5.4 LLM Brain as the recommendation knowledgebase
+- Structured recommendation results with relevance explanations
 - Top 5 results with show-more
 - One-page starter PDF guide per tool
 - Multi-agent pipeline with visible trace
@@ -39,7 +39,8 @@ Beginners often know their goal but not the name of the tool, category, or workf
 - Full internet scraping
 - User authentication
 - Personalized accounts
-- Live LLM dependency for core functionality
+- A made-up local tool database
+- External catalog APIs for MVP recommendation coverage
 
 ## User stories
 

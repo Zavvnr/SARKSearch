@@ -8,10 +8,10 @@
 
 ## Recommendation engine
 
-- Hardcoded curated knowledgebase with 40 tools
+- Using The "LLM Brain" API as the knowledgebase
 - Keyword extraction and synonym expansion
 - Relevance-plus-popularity ranking
-- GPT-4.1 optional agent mode with heuristic fallback
+- GPT-5.4 optional agent mode with heuristic fallback
 - Iterative refinement loop when confidence is weak
 
 ## Results experience

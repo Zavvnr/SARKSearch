@@ -6,7 +6,9 @@ from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-from .models import Tool
+from .models import Recommendation, Tool
+
+GuideRecommendation = Tool | Recommendation
 
 
 def _wrap_to_width(pdf: canvas.Canvas, text: str, font_name: str, font_size: int, max_width: int) -> list[str]:
@@ -88,13 +90,36 @@ def _format_tag(tag: str) -> str:
     return tag.replace("-", " ").title()
 
 
-def _best_for(tool: Tool) -> str:
-    tags = [_format_tag(tag) for tag in tool.tags[:4]]
+def _tags_for(tool: GuideRecommendation) -> list[str]:
+    existing_tags = getattr(tool, "tags", None)
+    if existing_tags:
+        return list(existing_tags)
+
+    words = f"{tool.name} {tool.category} {tool.description}".lower().replace("/", " ").split()
+    cleaned = ["".join(char for char in word if char.isalnum()) for word in words]
+    return [word for word in cleaned if len(word) > 2][:8]
+
+
+def _starter_steps_for(tool: GuideRecommendation) -> list[str]:
+    existing_steps = getattr(tool, "starter_steps", None)
+    if existing_steps:
+        return list(existing_steps)
+
+    starter_tip = getattr(tool, "starterTip", "")
+    return [
+        starter_tip or f"Open {tool.name} and look for the beginner or getting-started path.",
+        "Use one small task from your original goal instead of exploring every feature.",
+        "Save the useful result, link, or next step before leaving your first session.",
+    ]
+
+
+def _best_for(tool: GuideRecommendation) -> str:
+    tags = [_format_tag(tag) for tag in _tags_for(tool)[:4]]
     return ", ".join(tags) if tags else tool.category
 
 
-def _preparation_items(tool: Tool, query: str) -> list[str]:
-    lowered_tags = set(tool.tags)
+def _preparation_items(tool: GuideRecommendation, query: str) -> list[str]:
+    lowered_tags = set(_tags_for(tool))
     items = [f"Decide on one very small outcome tied to {query.strip() or 'your goal'}."]
 
     if {"resume", "writing", "essay", "paper"}.intersection(lowered_tags):
@@ -114,8 +139,8 @@ def _preparation_items(tool: Tool, query: str) -> list[str]:
     return items
 
 
-def _today_outcome(tool: Tool) -> str:
-    lowered_tags = set(tool.tags)
+def _today_outcome(tool: GuideRecommendation) -> str:
+    lowered_tags = set(_tags_for(tool))
     if {"resume", "portfolio", "writing"}.intersection(lowered_tags):
         return "A strong first session ends with a saved draft you can revise later, not a perfect final version."
     if {"research", "citations", "sources"}.intersection(lowered_tags):
@@ -129,8 +154,8 @@ def _today_outcome(tool: Tool) -> str:
     return f"A strong first session with {tool.name} ends with one small result you can save, share, or revisit."
 
 
-def _pitfall_note(tool: Tool) -> str:
-    lowered_tags = set(tool.tags)
+def _pitfall_note(tool: GuideRecommendation) -> str:
+    lowered_tags = set(_tags_for(tool))
     if {"design", "resume", "portfolio"}.intersection(lowered_tags):
         return "Do not spend your whole session changing colors, fonts, or layout before your actual content is ready."
     if {"research", "sources", "academic"}.intersection(lowered_tags):
@@ -142,7 +167,7 @@ def _pitfall_note(tool: Tool) -> str:
     return "Do not compare too many tools at once. Use this one long enough to learn whether it actually fits."
 
 
-def build_starter_pdf(tool: Tool, query: str) -> bytes:
+def build_starter_pdf(tool: GuideRecommendation, query: str) -> bytes:
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
@@ -221,7 +246,7 @@ def build_starter_pdf(tool: Tool, query: str) -> bytes:
     pdf.setFont("Helvetica", 10)
     _draw_list(
         pdf,
-        tool.starter_steps,
+        _starter_steps_for(tool),
         x=58,
         y=y,
         max_width=content_width - 32,
