@@ -7,6 +7,7 @@ from typing import Iterable, List, Sequence, Tuple
 from .llm_runtime import OptionalLLMRuntime
 from .models import (
     AgentTraceItem,
+    ExcludedRecommendation,
     IterationLogEntry,
     MilestoneStatus,
     OrchestrationReport,
@@ -59,7 +60,7 @@ SYNONYM_GROUPS = {
 DEFAULT_SERVICE_BOUNDARIES = [
     "React SPA handles the beginner-friendly interface and result rendering.",
     "Node.js gateway handles caching, MongoDB persistence, and FastAPI proxying.",
-    "FastAPI owns LLM Brain orchestration, recommendation shaping, and starter PDF generation.",
+    "FastAPI owns LLM Brain orchestration, recommendation shaping, starter documents, and PDF fallbacks.",
 ]
 
 DEFAULT_ARCHITECTURE_NOTES = [
@@ -109,9 +110,55 @@ def _normalize_recommendation_url(value: str) -> str:
     return ""
 
 
-def _build_llm_brain_recommendations(raw_results: Sequence[object], limit: int) -> List[Recommendation]:
+def _field_string(item: object, field: str) -> str:
+    if isinstance(item, dict):
+        value = item.get(field, "")
+    else:
+        value = getattr(item, field, "")
+    return str(value or "").strip()
+
+
+def _normalize_identity_value(value: object) -> str:
+    return (
+        str(value or "")
+        .strip()
+        .lower()
+        .removeprefix("https://")
+        .removeprefix("http://")
+        .removeprefix("www.")
+        .rstrip("/")
+    )
+
+
+def _recommendation_identity_keys(item: object) -> set[str]:
+    keys: set[str] = set()
+    slug = _normalize_identity_value(_field_string(item, "slug"))
+    name = _normalize_identity_value(_field_string(item, "name"))
+    url = _normalize_identity_value(_field_string(item, "url"))
+
+    if slug:
+        keys.add(f"slug:{slug}")
+    if name:
+        keys.add(f"name:{name}")
+    if url:
+        keys.add(f"url:{url}")
+
+    return keys
+
+
+def _recommendation_keys_from_parts(slug: str, name: str, url: str) -> set[str]:
+    return _recommendation_identity_keys({"slug": slug, "name": name, "url": url})
+
+
+def _build_llm_brain_recommendations(
+    raw_results: Sequence[object],
+    limit: int,
+    excluded_results: Sequence[object] | None = None,
+) -> List[Recommendation]:
     recommendations: List[Recommendation] = []
     seen: set[str] = set()
+    for excluded in excluded_results or []:
+        seen.update(_recommendation_identity_keys(excluded))
 
     for raw_item in raw_results:
         if not isinstance(raw_item, dict):
@@ -126,10 +173,10 @@ def _build_llm_brain_recommendations(raw_results: Sequence[object], limit: int) 
             continue
 
         slug = _first_string(raw_item, "slug", "id") or _slugify(name)
-        dedupe_key = slug.lower()
-        if dedupe_key in seen:
+        dedupe_keys = _recommendation_keys_from_parts(slug, name, url)
+        if dedupe_keys.intersection(seen):
             continue
-        seen.add(dedupe_key)
+        seen.update(dedupe_keys)
 
         recommendations.append(
             Recommendation(
@@ -247,25 +294,53 @@ class ImplementationAgent:
         self,
         specification: Specification,
         limit: int,
+        excluded_results: Sequence[ExcludedRecommendation | Recommendation] | None = None,
     ) -> Tuple[List[Recommendation], AgentTraceItem, float]:
-        llm_data = None
-        if callable(getattr(self.runtime, "recommend_tools", None)):
-            llm_data = self.runtime.recommend_tools(query=specification.original_query, limit=limit)
-
-        recommendations = _build_llm_brain_recommendations(
-            llm_data.get("results", []) if isinstance(llm_data, dict) else [],
-            limit,
-        )
+        exclusions = list(excluded_results or [])
+        recommendations: List[Recommendation] = []
         confidence = 0.0
-        if isinstance(llm_data, dict):
-            try:
-                confidence = float(llm_data.get("confidence", confidence))
-            except (TypeError, ValueError):
-                confidence = 0.0
+        calls_made = 0
+        max_attempts = 3 if exclusions else 1
+
+        for _attempt in range(max_attempts):
+            if len(recommendations) >= limit:
+                break
+
+            llm_data = None
+            remaining = limit - len(recommendations)
+            active_exclusions = [*exclusions, *recommendations]
+            if callable(getattr(self.runtime, "recommend_tools", None)):
+                calls_made += 1
+                llm_data = self.runtime.recommend_tools(
+                    query=specification.original_query,
+                    limit=remaining,
+                    excluded_results=active_exclusions,
+                )
+
+            batch = _build_llm_brain_recommendations(
+                llm_data.get("results", []) if isinstance(llm_data, dict) else [],
+                remaining,
+                active_exclusions,
+            )
+            recommendations.extend(batch)
+
+            if isinstance(llm_data, dict):
+                try:
+                    confidence = max(confidence, float(llm_data.get("confidence", confidence)))
+                except (TypeError, ValueError):
+                    pass
+
+            if not exclusions or not isinstance(llm_data, dict):
+                break
+
+        confidence = min(max(confidence, 0.0), 1.0) if recommendations else 0.0
 
         status = "completed" if recommendations else "blocked"
+        exclusion_detail = f" while avoiding {len(exclusions)} existing results" if exclusions else ""
+        call_detail = f" across {calls_made} LLM Brain calls" if calls_made > 1 else ""
         detail = (
-            f"Asked the LLM Brain for recommendations and assembled {len(recommendations)} matches."
+            f"Asked the LLM Brain for recommendations{exclusion_detail} and assembled "
+            f"{len(recommendations)} fresh matches{call_detail}."
             if recommendations
             else (
                 "The LLM Brain did not return usable recommendations. "
@@ -317,6 +392,7 @@ class OrchestratorAgent:
         query: str,
         limit: int,
         tools: Sequence[Tool] | None = None,
+        excluded_results: Sequence[ExcludedRecommendation | Recommendation] | None = None,
     ) -> Tuple[List[Recommendation], List[AgentTraceItem], OrchestrationReport]:
         pipeline_start = time.perf_counter()
         trace: List[AgentTraceItem] = []
@@ -331,7 +407,7 @@ class OrchestratorAgent:
         ]
 
         stage_start = time.perf_counter()
-        orchestrator_detail = "Sequenced local intent parsing, one LLM Brain recommendation call, and result validation."
+        orchestrator_detail = "Sequenced local intent parsing, LLM Brain recommendation calls, and result validation."
         orchestrator_duration = _duration_ms(stage_start)
 
         trace.append(
@@ -377,6 +453,7 @@ class OrchestratorAgent:
         recommendations, implementation_trace, confidence = self.implementation_agent.run(
             specification,
             limit,
+            excluded_results,
         )
         implementation_trace.durationMs = _duration_ms(stage_start)
         trace.append(implementation_trace)

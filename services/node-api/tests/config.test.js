@@ -134,8 +134,8 @@ await runTest("node api env example matches active config contract", async () =>
   assert.equal(config.requestTimeoutMs, 100000);
   assert.deepEqual(config.corsOrigins, ["http://127.0.0.1:5173", "http://localhost:5173"]);
   assert.equal(config.mongoDbUri, "");
-  assert.equal(config.defaultSearchLimit, 8);
-  assert.equal(config.maxSearchLimit, 12);
+  assert.equal(config.defaultSearchLimit, 5);
+  assert.equal(config.maxSearchLimit, 20);
   assert.equal(config.recentSearchLimit, 6);
 });
 

@@ -9,12 +9,12 @@
 
 ## Quality checks
 
-- Python unit tests cover LLM Brain orchestration and PDF generation
+- Python unit tests cover LLM Brain orchestration, starter document generation, network search, and PDF fallback generation
 - Production frontend build passes through Vite
 - End-to-end smoke test validates FastAPI plus Node gateway integration
 
 ## Remaining extension points
 
 - Add richer behavioral analytics
-- Add stronger PDF visual regression checks if branding expands
+- Add stronger document and PDF visual regression checks if branding expands
 - Add integration tests for GPT-5.4 mode when API credentials are available

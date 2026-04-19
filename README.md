@@ -108,15 +108,16 @@ What this means:
 - There is no hardcoded app/site database in the active recommendation path.
 - Product Hunt, College Scorecard, Codeforces, and other catalog APIs are no longer required.
 - If the OpenAI runtime is not configured, the engine returns an empty recommendation set instead of falling back to a made-up local database.
-- Starter PDFs are generated from the recommendations returned by the LLM Brain.
+- Starter documents are generated from the recommendations returned by the LLM Brain.
 
 ## Features
 
 - Beginner-friendly search with guided prompt pills
 - GPT-5.4 LLM Brain recommendations across career, learning, research, productivity, creative, coding, finance, and community goals
-- Ranked top 5 results with show-more expansion
+- Ranked top 5 results with "search more" expansion in fresh 5-result batches up to 20 results
+- Application network view that asks the engine for up to 50 nearby apps and sites around the prompt
 - Contextual relevance explanations and first-step tips
-- One-page starter PDF guide for every recommended tool
+- Google Docs-compatible starter guide for every recommended tool, with a first-use checklist
 - Simplified beginner-facing interface focused on search, results, and starter actions
 - Optional MongoDB persistence for recent searches
 

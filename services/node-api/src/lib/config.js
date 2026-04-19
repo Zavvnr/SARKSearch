@@ -55,8 +55,8 @@ function getOrigins(name, fallback) {
 }
 
 export function buildConfig() {
-  const defaultSearchLimit = getNumber("DEFAULT_SEARCH_LIMIT", 8);
-  const maxSearchLimit = getNumber("MAX_SEARCH_LIMIT", 12, defaultSearchLimit);
+  const defaultSearchLimit = getNumber("DEFAULT_SEARCH_LIMIT", 5);
+  const maxSearchLimit = getNumber("MAX_SEARCH_LIMIT", 20, defaultSearchLimit);
 
   return {
     host: getString("HOST", "127.0.0.1"),

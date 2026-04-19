@@ -29,8 +29,9 @@ Beginners often know their goal but not the name of the tool, category, or workf
 - Guided prompt pills
 - GPT-5.4 LLM Brain as the recommendation knowledgebase
 - Structured recommendation results with relevance explanations
-- Top 5 results with show-more
-- One-page starter PDF guide per tool
+- Top 5 results with search-more expansion up to 20 fresh results
+- Prompt-centered application network with up to 50 nearby apps and sites
+- Google Docs-compatible starter guide per tool
 - Multi-agent pipeline with visible trace
 - Optional MongoDB persistence
 
@@ -46,5 +47,5 @@ Beginners often know their goal but not the name of the tool, category, or workf
 
 - As a beginner, I can describe my goal naturally and still get useful recommendations.
 - As a job seeker, I can find resume and networking tools without knowing their names.
-- As a first-time user, I can open a starter PDF and immediately know what to do next.
+- As a first-time user, I can open a starter document and immediately know what to do next.
 - As a curious user, I can inspect the agent trace and understand how the app reasoned about my request.

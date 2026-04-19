@@ -34,5 +34,5 @@ SARKSearch no longer stores a curated recommendation catalog in code or MongoDB.
 ## Scaling path
 
 - Add indexes on `query` and `createdAt`
-- Add a separate analytics collection for click-throughs and PDF opens
+- Add a separate analytics collection for click-throughs, starter document opens, and network views
 - Add optional retrieval or source auditing later if the LLM Brain needs external grounding

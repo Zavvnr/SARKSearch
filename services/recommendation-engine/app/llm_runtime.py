@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Sequence
 
 from .config import settings
 
@@ -43,6 +43,27 @@ def _json_mode_input(input_text: str) -> str:
     if "json" in input_text.lower():
         return input_text
     return f"Return JSON only.\n{input_text}"
+
+
+def _string_field(item: object, field: str) -> str:
+    if isinstance(item, dict):
+        value = item.get(field, "")
+    else:
+        value = getattr(item, field, "")
+    return str(value or "").strip()
+
+
+def _excluded_results_payload(excluded_results: Sequence[object] | None) -> list[dict[str, str]]:
+    payload = []
+    for item in excluded_results or []:
+        normalized = {
+            "slug": _string_field(item, "slug"),
+            "name": _string_field(item, "name"),
+            "url": _string_field(item, "url"),
+        }
+        if normalized["slug"] or normalized["name"] or normalized["url"]:
+            payload.append(normalized)
+    return payload
 
 
 class OptionalLLMRuntime:
@@ -97,7 +118,20 @@ class OptionalLLMRuntime:
             self.last_error = _safe_error_message(error)
             return None
 
-    def recommend_tools(self, *, query: str, limit: int) -> dict[str, Any] | None:
+    def recommend_tools(
+        self,
+        *,
+        query: str,
+        limit: int,
+        excluded_results: Sequence[object] | None = None,
+    ) -> dict[str, Any] | None:
+        excluded_payload = _excluded_results_payload(excluded_results)
+        exclusion_instruction = (
+            "Do not return any result whose slug, name, or official URL appears in excluded_results. "
+            "If a best match is excluded, replace it with the next best distinct recommendation. "
+            if excluded_payload
+            else ""
+        )
         instructions = (
             "You are the LLM Brain knowledgebase for SARKSearch. "
             "Use your broad knowledge of well-known sites, apps, schools, programs, communities, and services. "
@@ -106,16 +140,19 @@ class OptionalLLMRuntime:
             f"results must contain at most {limit} objects. "
             "Each result object must contain slug, name, category, popularity, description, url, icon, "
             "relevance_reason, and starter_tip. "
+            f"When limit is {limit}, aim to return that many distinct usable recommendations if enough exist. "
+            f"{exclusion_instruction}"
             "Prefer official websites and broadly recognized tools. "
             "If you are not confident about an official URL, omit that result instead of inventing one. "
+            "Use a logo or favicon URL for icon when you are confident; otherwise use short initials. "
             "Keep descriptions and starter tips beginner-friendly and practical."
         )
-        payload = json.dumps({"query": query, "limit": limit})
+        payload = json.dumps({"query": query, "limit": limit, "excluded_results": excluded_payload})
         return self.generate_json(instructions=instructions, input_text=payload)
 
     def recommend_tool_for_guide(self, *, slug: str, query: str) -> dict[str, Any] | None:
         instructions = (
-            "You are the LLM Brain knowledgebase for SARKSearch starter PDFs. "
+            "You are the LLM Brain knowledgebase for SARKSearch starter documents. "
             "Reconstruct one beginner-friendly recommendation from a slug and user goal. "
             "Do not use a local catalog or external product database. "
             "Return strict JSON with one key result. "

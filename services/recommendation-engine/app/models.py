@@ -6,10 +6,24 @@ from pydantic import BaseModel, Field
 
 from .config import settings
 
+NETWORK_RESULT_LIMIT = 50
+
+
+class ExcludedRecommendation(BaseModel):
+    slug: str = ""
+    name: str = ""
+    url: str = ""
+
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=3)
     limit: int = Field(default=settings.default_search_limit, ge=1, le=settings.max_search_limit)
+    excludeResults: List[ExcludedRecommendation] = Field(default_factory=list, max_length=20)
+
+
+class NetworkRequest(BaseModel):
+    query: str = Field(min_length=3)
+    limit: int = Field(default=NETWORK_RESULT_LIMIT, ge=1, le=NETWORK_RESULT_LIMIT)
 
 
 class Tool(BaseModel):

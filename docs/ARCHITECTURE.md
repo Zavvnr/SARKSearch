@@ -15,7 +15,7 @@ The app follows the structure requested in the challenge prompt:
 
 - Single-page search experience
 - Guided prompts and recent searches
-- Result rendering with tool links and starter PDFs
+- Result rendering with tool links, starter documents, and prompt-centered application networks
 - Agent trace for transparency
 
 ### Node.js API
@@ -24,14 +24,15 @@ The app follows the structure requested in the challenge prompt:
 - Applies TTL caching
 - Calls the FastAPI recommendation engine
 - Persists recent searches to MongoDB or in-memory fallback
-- Proxies starter PDF requests
+- Proxies starter document and PDF fallback requests
 
 ### FastAPI recommendation engine
 
 - Treats GPT-5.4 as the LLM Brain knowledgebase
 - Runs the agent pipeline
 - Produces recommendation objects, explanations, and starter tips
-- Generates one-page PDF guides
+- Generates Google Docs-compatible starter documents and polished PDF fallbacks
+- Builds a 50-result application network when requested by the React UI
 - Does not fall back to a hardcoded tool catalog when the LLM Brain is unavailable
 
 ## Scaling notes

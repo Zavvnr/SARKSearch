@@ -1,89 +1,35 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from html import escape as html_escape
 from io import BytesIO
+from xml.sax.saxutils import escape as xml_escape
 
-from reportlab.lib.colors import HexColor
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .models import Recommendation, Tool
 
 GuideRecommendation = Tool | Recommendation
 
 
-def _wrap_to_width(pdf: canvas.Canvas, text: str, font_name: str, font_size: int, max_width: int) -> list[str]:
-    words = text.split()
-    if not words:
-        return []
-
-    lines: list[str] = []
-    current = words[0]
-    for word in words[1:]:
-        candidate = f"{current} {word}"
-        if pdf.stringWidth(candidate, font_name, font_size) <= max_width:
-            current = candidate
-        else:
-            lines.append(current)
-            current = word
-    lines.append(current)
-    return lines
-
-
-def _draw_paragraph(
-    pdf: canvas.Canvas,
-    text: str,
-    *,
-    x: int,
-    y: int,
-    max_width: int,
-    font_name: str = "Helvetica",
-    font_size: int = 10,
-    color: str = "#20352a",
-    line_height: int = 14,
-) -> int:
-    pdf.setFont(font_name, font_size)
-    pdf.setFillColor(HexColor(color))
-    for line in _wrap_to_width(pdf, text, font_name, font_size, max_width):
-        pdf.drawString(x, y, line)
-        y -= line_height
-    return y
-
-
-def _draw_list(
-    pdf: canvas.Canvas,
-    items: list[str],
-    *,
-    x: int,
-    y: int,
-    max_width: int,
-    numbered: bool = False,
-) -> int:
-    for index, item in enumerate(items, start=1):
-        prefix = f"{index}. " if numbered else "- "
-        wrapped_lines = _wrap_to_width(pdf, f"{prefix}{item}", "Helvetica", 10, max_width)
-        for line in wrapped_lines:
-            pdf.drawString(x, y, line)
-            y -= 14
-        y -= 6
-    return y
-
-
-def _draw_card(
-    pdf: canvas.Canvas,
-    *,
-    x: int,
-    top: int,
-    width: int,
-    height: int,
-    title: str,
-) -> int:
-    pdf.setFillColor(HexColor("#ffffff"))
-    pdf.setStrokeColor(HexColor("#d3e4d4"))
-    pdf.roundRect(x, top - height, width, height, 16, stroke=1, fill=1)
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.setFillColor(HexColor("#2e7a56"))
-    pdf.drawString(x + 16, top - 24, title)
-    return top - 42
+@dataclass(frozen=True)
+class GuideContent:
+    tool_name: str
+    query: str
+    category: str
+    popularity: str
+    best_for: str
+    url: str
+    description: str
+    preparation_items: list[str]
+    starter_steps: list[str]
+    today_outcome: str
+    pitfall_note: str
+    understanding_checklist: list[str]
 
 
 def _format_tag(tag: str) -> str:
@@ -167,118 +113,303 @@ def _pitfall_note(tool: GuideRecommendation) -> str:
     return "Do not compare too many tools at once. Use this one long enough to learn whether it actually fits."
 
 
+def _understanding_checklist(tool: GuideRecommendation) -> list[str]:
+    return [
+        f"Open {tool.name}'s official site and write down the main problem it solves.",
+        "Find the account, pricing, or free-plan requirements before committing time.",
+        "Locate the help center, docs, examples, templates, or getting-started page.",
+        "Run one starter step from this guide and save the result or link.",
+        "Write down what felt useful, confusing, or unnecessary after 15 to 20 minutes.",
+        "Decide whether to keep using it, compare one alternative, or stop for now.",
+    ]
+
+
+def build_guide_content(tool: GuideRecommendation, query: str) -> GuideContent:
+    return GuideContent(
+        tool_name=tool.name,
+        query=query.strip() or "your goal",
+        category=tool.category,
+        popularity=tool.popularity,
+        best_for=_best_for(tool),
+        url=tool.url,
+        description=tool.description,
+        preparation_items=_preparation_items(tool, query),
+        starter_steps=_starter_steps_for(tool),
+        today_outcome=_today_outcome(tool),
+        pitfall_note=_pitfall_note(tool),
+        understanding_checklist=_understanding_checklist(tool),
+    )
+
+
+def _plain_url(url: str) -> str:
+    return url.replace("https://", "").replace("http://", "").rstrip("/")
+
+
+def _pdf_styles() -> dict[str, ParagraphStyle]:
+    base = getSampleStyleSheet()
+    return {
+        "title": ParagraphStyle(
+            "GuideTitle",
+            parent=base["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=24,
+            leading=29,
+            alignment=0,
+            textColor=colors.HexColor("#173227"),
+            spaceAfter=6,
+        ),
+        "meta": ParagraphStyle(
+            "GuideMeta",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor("#5a7266"),
+            spaceAfter=4,
+        ),
+        "sectionTitle": ParagraphStyle(
+            "GuideSectionTitle",
+            parent=base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=13,
+            leading=16,
+            textColor=colors.HexColor("#2e7a56"),
+            spaceBefore=0,
+            spaceAfter=7,
+        ),
+        "body": ParagraphStyle(
+            "GuideBody",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=15,
+            textColor=colors.HexColor("#20352a"),
+            spaceAfter=5,
+        ),
+        "smallBold": ParagraphStyle(
+            "GuideSmallBold",
+            parent=base["BodyText"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor("#173227"),
+        ),
+        "footer": ParagraphStyle(
+            "GuideFooter",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor("#5a7266"),
+        ),
+    }
+
+
+def _p(text: str, style: ParagraphStyle) -> Paragraph:
+    return Paragraph(xml_escape(text), style)
+
+
+def _link(url: str, style: ParagraphStyle) -> Paragraph:
+    escaped_url = xml_escape(url, {'"': "&quot;"})
+    label = xml_escape(_plain_url(url))
+    return Paragraph(f'<link href="{escaped_url}">{label}</link>', style)
+
+
+def _list_items(items: list[str], style: ParagraphStyle, numbered: bool = False) -> list[Paragraph]:
+    paragraphs = []
+    for index, item in enumerate(items, start=1):
+        prefix = f"{index}. " if numbered else "- "
+        paragraphs.append(_p(f"{prefix}{item}", style))
+    return paragraphs
+
+
+def _card(title: str, flowables: list[object], styles: dict[str, ParagraphStyle], width: float) -> Table:
+    content = [_p(title, styles["sectionTitle"]), *flowables]
+    table = Table([[content]], colWidths=[width])
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#d3e4d4")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 14),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+                ("TOPPADDING", (0, 0), (-1, -1), 12),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
+    return table
+
+
 def build_starter_pdf(tool: GuideRecommendation, query: str) -> bytes:
+    content = build_guide_content(tool, query)
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    pdf.setFillColor(HexColor("#f5faf4"))
-    pdf.rect(0, 0, width, height, stroke=0, fill=1)
-    pdf.setStrokeColor(HexColor("#d3e4d4"))
-    pdf.line(42, height - 104, width - 42, height - 104)
-
-    pdf.setFillColor(HexColor("#173227"))
-    pdf.setFont("Helvetica-Bold", 24)
-    pdf.drawString(42, height - 58, f"{tool.name} starter guide")
-
-    pdf.setFont("Helvetica", 11)
-    pdf.setFillColor(HexColor("#5a7266"))
-    pdf.drawString(42, height - 78, f"SARKSearch recommendation for: {query}")
-    pdf.drawString(42, height - 94, f"Category: {tool.category}")
-
-    content_width = width - 84
-    left_x = 42
-    right_x = 318
-    column_width = 252
-
-    y = _draw_card(pdf, x=42, top=660, width=content_width, height=92, title="Quick snapshot")
-    pdf.setFont("Helvetica-Bold", 10)
-    pdf.setFillColor(HexColor("#173227"))
-    pdf.drawString(58, y, "Popularity")
-    pdf.drawString(222, y, "Best for")
-    pdf.drawString(406, y, "Official link")
-
-    pdf.setFont("Helvetica", 10)
-    pdf.setFillColor(HexColor("#20352a"))
-    pdf.drawString(58, y - 18, tool.popularity)
-    pdf.drawString(222, y - 18, _best_for(tool))
-    link_text = tool.url.replace("https://", "").replace("http://", "")
-    pdf.drawString(406, y - 18, link_text[:23])
-    pdf.linkURL(tool.url, (406, y - 24, 528, y - 8), relative=0)
-
-    y = _draw_card(pdf, x=left_x, top=548, width=column_width, height=138, title="Why this tool fits")
-    y = _draw_paragraph(
-        pdf,
-        tool.description,
-        x=left_x + 16,
-        y=y,
-        max_width=column_width - 32,
-        font_size=10,
-        line_height=14,
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=42,
+        rightMargin=42,
+        topMargin=42,
+        bottomMargin=42,
     )
-    y -= 4
-    pdf.setFont("Helvetica-Bold", 10)
-    pdf.setFillColor(HexColor("#173227"))
-    pdf.drawString(left_x + 16, y, "Strong first use cases")
-    _draw_paragraph(
-        pdf,
-        _best_for(tool),
-        x=left_x + 16,
-        y=y - 16,
-        max_width=column_width - 32,
-        font_size=10,
-        line_height=14,
+    styles = _pdf_styles()
+    content_width = letter[0] - 84
+
+    quick_snapshot = Table(
+        [
+            [
+                _p("Popularity", styles["smallBold"]),
+                _p("Best for", styles["smallBold"]),
+                _p("Official link", styles["smallBold"]),
+            ],
+            [
+                _p(content.popularity, styles["body"]),
+                _p(content.best_for, styles["body"]),
+                _link(content.url, styles["body"]),
+            ],
+        ],
+        colWidths=[1.35 * inch, 2.65 * inch, content_width - (4 * inch)],
+        hAlign="LEFT",
+    )
+    quick_snapshot.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef7ef")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#d3e4d4")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d3e4d4")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
     )
 
-    y = _draw_card(pdf, x=right_x, top=548, width=column_width, height=138, title="Before you open it")
-    pdf.setFillColor(HexColor("#20352a"))
-    pdf.setFont("Helvetica", 10)
-    _draw_list(
-        pdf,
-        _preparation_items(tool, query),
-        x=right_x + 16,
-        y=y,
-        max_width=column_width - 32,
-    )
+    story: list[object] = [
+        _p(f"{content.tool_name} starter guide", styles["title"]),
+        _p(f"SARKSearch recommendation for: {content.query}", styles["meta"]),
+        _p(f"Category: {content.category}", styles["meta"]),
+        Spacer(1, 12),
+        quick_snapshot,
+        Spacer(1, 12),
+        _card("Why this tool fits", [_p(content.description, styles["body"])], styles, content_width),
+        Spacer(1, 10),
+        _card("Before you open it", _list_items(content.preparation_items, styles["body"]), styles, content_width),
+        Spacer(1, 10),
+        _card("First 20 minutes", _list_items(content.starter_steps, styles["body"], numbered=True), styles, content_width),
+        Spacer(1, 10),
+        _card("Good outcome today", [_p(content.today_outcome, styles["body"])], styles, content_width),
+        Spacer(1, 10),
+        _card("Avoid this common mistake", [_p(content.pitfall_note, styles["body"])], styles, content_width),
+        Spacer(1, 10),
+        _card(
+            "Checklist for understanding the application",
+            _list_items(content.understanding_checklist, styles["body"]),
+            styles,
+            content_width,
+        ),
+        Spacer(1, 12),
+        _p("Open the tool and save one useful result before you leave your first session.", styles["footer"]),
+    ]
 
-    y = _draw_card(pdf, x=42, top=392, width=content_width, height=162, title="First 20 minutes")
-    pdf.setFillColor(HexColor("#20352a"))
-    pdf.setFont("Helvetica", 10)
-    _draw_list(
-        pdf,
-        _starter_steps_for(tool),
-        x=58,
-        y=y,
-        max_width=content_width - 32,
-        numbered=True,
-    )
-
-    y = _draw_card(pdf, x=left_x, top=212, width=column_width, height=104, title="Good outcome today")
-    _draw_paragraph(
-        pdf,
-        _today_outcome(tool),
-        x=left_x + 16,
-        y=y,
-        max_width=column_width - 32,
-        font_size=10,
-        line_height=15,
-    )
-
-    y = _draw_card(pdf, x=right_x, top=212, width=column_width, height=104, title="Avoid this common mistake")
-    _draw_paragraph(
-        pdf,
-        _pitfall_note(tool),
-        x=right_x + 16,
-        y=y,
-        max_width=column_width - 32,
-        font_size=10,
-        line_height=15,
-    )
-
-    pdf.setFillColor(HexColor("#5a7266"))
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(42, 34, "Open the tool and save one useful result before you leave your first session.")
-    pdf.showPage()
-    pdf.save()
-
+    doc.build(story)
     return buffer.getvalue()
+
+
+def _html_list(items: list[str], ordered: bool = False) -> str:
+    tag = "ol" if ordered else "ul"
+    entries = "".join(f"<li>{html_escape(item)}</li>" for item in items)
+    return f"<{tag}>{entries}</{tag}>"
+
+
+def build_starter_document_html(tool: GuideRecommendation, query: str) -> str:
+    content = build_guide_content(tool, query)
+    title = f"{content.tool_name} starter guide"
+    return f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{html_escape(title)}</title>
+  <style>
+    body {{
+      color: #173227;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.55;
+      margin: 48px;
+    }}
+    h1 {{
+      font-size: 28px;
+      margin: 0 0 8px;
+    }}
+    h2 {{
+      color: #2e7a56;
+      font-size: 17px;
+      margin: 24px 0 8px;
+    }}
+    p {{
+      margin: 0 0 10px;
+    }}
+    table {{
+      border-collapse: collapse;
+      margin: 18px 0;
+      width: 100%;
+    }}
+    th, td {{
+      border: 1px solid #d3e4d4;
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+    }}
+    th {{
+      background: #eef7ef;
+    }}
+    ul, ol {{
+      margin-top: 8px;
+      padding-left: 24px;
+    }}
+    .meta {{
+      color: #5a7266;
+      margin-bottom: 4px;
+    }}
+  </style>
+</head>
+<body>
+  <h1>{html_escape(title)}</h1>
+  <p class="meta">SARKSearch recommendation for: {html_escape(content.query)}</p>
+  <p class="meta">Category: {html_escape(content.category)}</p>
+
+  <h2>Quick snapshot</h2>
+  <table>
+    <tr>
+      <th>Popularity</th>
+      <th>Best for</th>
+      <th>Official link</th>
+    </tr>
+    <tr>
+      <td>{html_escape(content.popularity)}</td>
+      <td>{html_escape(content.best_for)}</td>
+      <td><a href="{html_escape(content.url, quote=True)}">{html_escape(_plain_url(content.url))}</a></td>
+    </tr>
+  </table>
+
+  <h2>Why this tool fits</h2>
+  <p>{html_escape(content.description)}</p>
+
+  <h2>Before you open it</h2>
+  {_html_list(content.preparation_items)}
+
+  <h2>First 20 minutes</h2>
+  {_html_list(content.starter_steps, ordered=True)}
+
+  <h2>Good outcome today</h2>
+  <p>{html_escape(content.today_outcome)}</p>
+
+  <h2>Avoid this common mistake</h2>
+  <p>{html_escape(content.pitfall_note)}</p>
+
+  <h2>Checklist for understanding the application</h2>
+  {_html_list(content.understanding_checklist)}
+</body>
+</html>
+"""

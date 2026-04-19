@@ -17,9 +17,11 @@
 ## Results experience
 
 - Top 5 default results
-- Show-more expansion
+- Search-more expansion in 5-result batches up to 20 total results
+- Temporary per-search result set used to avoid showing duplicate recommendations
+- Application network expansion that requests up to 50 nearby applications and sites for a prompt-centered graph
 - Tool link, popularity, relevance reason, and starter tip
-- One-page starter PDF for each tool
+- Google Docs-compatible starter guide for each tool, including the starter content and an application-understanding checklist
 
 ## Transparency
 

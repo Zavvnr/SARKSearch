@@ -189,9 +189,9 @@ import app.main as main_module
 from app.agent_runtime import OrchestratorAgent, _build_llm_brain_recommendations, build_summary
 from app.config import ACTIVE_ENV_KEYS, DEFAULT_OPENAI_MODEL, Settings, _load_env_file, _normalize_openai_model
 from app.llm_runtime import OptionalLLMRuntime, _json_mode_input
-from app.models import Recommendation, Tool
-from app.models import SearchRequest
-from app.pdf_guides import build_starter_pdf
+from app.models import ExcludedRecommendation, Recommendation, Tool
+from app.models import NetworkRequest, SearchRequest
+from app.pdf_guides import build_starter_document_html, build_starter_pdf
 
 
 LLM_RESULT = {
@@ -244,7 +244,7 @@ class StubLLMBrainRuntime:
             return {"detail": "Coordinated the LLM Brain recommendation flow."}
         return None
 
-    def recommend_tools(self, *, query: str, limit: int):
+    def recommend_tools(self, *, query: str, limit: int, excluded_results=None):
         return {
             "summary": "The LLM Brain selected mainstream starting points.",
             "confidence": 0.88,
@@ -264,18 +264,85 @@ class CountingLLMBrainRuntime(StubLLMBrainRuntime):
         self.generate_json_calls += 1
         return super().generate_json(instructions=instructions, input_text=input_text)
 
-    def recommend_tools(self, *, query: str, limit: int):
+    def recommend_tools(self, *, query: str, limit: int, excluded_results=None):
         self.recommend_tools_calls += 1
-        return super().recommend_tools(query=query, limit=limit)
+        return super().recommend_tools(query=query, limit=limit, excluded_results=excluded_results)
 
 
 class SlowLLMBrainRuntime(StubLLMBrainRuntime):
     def __init__(self, delay_seconds: float = 0.03) -> None:
         self.delay_seconds = delay_seconds
 
-    def recommend_tools(self, *, query: str, limit: int):
+    def recommend_tools(self, *, query: str, limit: int, excluded_results=None):
         time.sleep(self.delay_seconds)
-        return super().recommend_tools(query=query, limit=limit)
+        return super().recommend_tools(query=query, limit=limit, excluded_results=excluded_results)
+
+
+class ReplacementLLMBrainRuntime(StubLLMBrainRuntime):
+    def __init__(self) -> None:
+        self.recommend_tools_calls = 0
+
+    def recommend_tools(self, *, query: str, limit: int, excluded_results=None):
+        self.recommend_tools_calls += 1
+        if self.recommend_tools_calls == 1:
+            return {
+                "summary": "The LLM Brain tried one existing result and one fresh result.",
+                "confidence": 0.82,
+                "results": [
+                    LLM_RESULT,
+                    {
+                        "slug": "github",
+                        "name": "GitHub",
+                        "category": "Developer / Collaboration",
+                        "popularity": "Widely used developer platform",
+                        "description": "Code hosting, collaboration, issues, and project discovery.",
+                        "url": "https://github.com/",
+                        "icon": "GH",
+                        "relevance_reason": "Useful for discovering examples and organizing technical work.",
+                        "starter_tip": "Create one repository or save one relevant example project.",
+                    },
+                ],
+            }
+
+        return {
+            "summary": "The LLM Brain replaced excluded matches with a distinct result.",
+            "confidence": 0.8,
+            "results": [
+                {
+                    "slug": "notion",
+                    "name": "Notion",
+                    "category": "Productivity / Notes",
+                    "popularity": "Popular workspace app",
+                    "description": "Flexible workspace for notes, tasks, databases, and planning.",
+                    "url": "https://www.notion.com/",
+                    "icon": "NO",
+                    "relevance_reason": "Helpful for keeping next steps and resources in one place.",
+                    "starter_tip": "Start one page for the goal and add your first three tasks.",
+                }
+            ],
+        }
+
+
+class ManyResultsLLMBrainRuntime(StubLLMBrainRuntime):
+    def recommend_tools(self, *, query: str, limit: int, excluded_results=None):
+        return {
+            "summary": "The LLM Brain selected a broad application network.",
+            "confidence": 0.9,
+            "results": [
+                {
+                    "slug": f"tool-{index}",
+                    "name": f"Tool {index}",
+                    "category": "Software / Discovery",
+                    "popularity": "Network match",
+                    "description": f"Tool {index} helps beginners compare useful applications.",
+                    "url": f"https://tool-{index}.example.com/",
+                    "icon": "TL",
+                    "relevance_reason": "Relevant to the user's requested application network.",
+                    "starter_tip": "Open the official site and try one small task.",
+                }
+                for index in range(1, limit + 1)
+            ],
+        }
 
 
 class DisabledLLMRuntime:
@@ -285,7 +352,7 @@ class DisabledLLMRuntime:
     def generate_json(self, *, instructions: str, input_text: str):
         return None
 
-    def recommend_tools(self, *, query: str, limit: int):
+    def recommend_tools(self, *, query: str, limit: int, excluded_results=None):
         return None
 
     def recommend_tool_for_guide(self, *, slug: str, query: str):
@@ -354,8 +421,8 @@ class LLMBrainRecommendationEngineTests(TestCase):
         self.assertEqual(settings.app_name, "SARKSearch Recommendation Engine")
         self.assertEqual(settings.host, "127.0.0.1")
         self.assertEqual(settings.port, 8000)
-        self.assertEqual(settings.default_search_limit, 8)
-        self.assertEqual(settings.max_search_limit, 12)
+        self.assertEqual(settings.default_search_limit, 5)
+        self.assertEqual(settings.max_search_limit, 20)
         self.assertEqual(settings.openai_model, DEFAULT_OPENAI_MODEL)
 
     def test_recommendation_engine_env_file_is_loaded_and_used_by_settings(self) -> None:
@@ -425,6 +492,26 @@ class LLMBrainRecommendationEngineTests(TestCase):
         self.assertEqual(results[0].name, "ChatGPT")
         self.assertEqual(runtime.recommend_tools_calls, 1)
         self.assertEqual(runtime.generate_json_calls, 0)
+
+    def test_search_more_filters_existing_results_and_replaces_duplicates(self) -> None:
+        runtime = ReplacementLLMBrainRuntime()
+
+        results, trace, _orchestration = OrchestratorAgent(runtime=runtime).run(
+            "I need tools for my first software project",
+            2,
+            excluded_results=[
+                ExcludedRecommendation(
+                    slug="chatgpt",
+                    name="ChatGPT",
+                    url="https://chatgpt.com/",
+                )
+            ],
+        )
+        brain_trace = next(item for item in trace if item.agent == "LLMBrainAgent")
+
+        self.assertEqual([item.name for item in results], ["GitHub", "Notion"])
+        self.assertEqual(runtime.recommend_tools_calls, 2)
+        self.assertIn("avoiding 1 existing results", brain_trace.detail)
 
     def test_search_timing_identifies_slow_llm_brain_stage(self) -> None:
         results, trace, orchestration = OrchestratorAgent(runtime=SlowLLMBrainRuntime()).run(
@@ -514,6 +601,40 @@ class LLMBrainRecommendationEngineTests(TestCase):
 
         pdf_bytes = build_starter_pdf(recommendation, "build a resume")
         self.assertGreater(len(pdf_bytes), 500)
+
+    def test_starter_document_includes_pdf_content_and_checklist(self) -> None:
+        recommendation = Recommendation(
+            slug="chatgpt",
+            name="ChatGPT",
+            category="AI / Assistant",
+            popularity="Widely adopted AI assistant",
+            description="Conversational AI assistant for brainstorming, drafting, learning, and planning.",
+            url="https://chatgpt.com/",
+            icon="AI",
+            relevanceReason="The LLM Brain selected it as a beginner-friendly starting point.",
+            starterTip="Ask for a checklist, then act on the first step.",
+        )
+
+        document_html = build_starter_document_html(recommendation, "build a resume")
+
+        self.assertIn("Quick snapshot", document_html)
+        self.assertIn("First 20 minutes", document_html)
+        self.assertIn("Checklist for understanding the application", document_html)
+        self.assertIn("ChatGPT", document_html)
+
+    def test_fastapi_network_search_returns_50_recommendations(self) -> None:
+        original_orchestrator = main_module.orchestrator
+        main_module.orchestrator = OrchestratorAgent(runtime=ManyResultsLLMBrainRuntime())
+
+        try:
+            response = main_module.search_application_network(
+                NetworkRequest(query="show me a network of learning applications", limit=50)
+            )
+        finally:
+            main_module.orchestrator = original_orchestrator
+
+        self.assertEqual(len(response.results), 50)
+        self.assertEqual(response.results[0].name, "Tool 1")
 
     def test_guide_lookup_can_rehydrate_from_llm_brain(self) -> None:
         orchestrator = OrchestratorAgent(runtime=StubLLMBrainRuntime())

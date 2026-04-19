@@ -1,19 +1,32 @@
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
-import { API_BASE_URL, fetchRecentSearches, searchTools } from "./api";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  API_BASE_URL,
+  MAX_RESULT_LIMIT,
+  NETWORK_RESULT_LIMIT,
+  fetchApplicationNetwork,
+  fetchRecentSearches,
+  searchTools,
+} from "./api";
+
+const RESULT_BATCH_SIZE = 5;
+const NETWORK_CENTER = { x: 590, y: 420 };
+const NETWORK_RING_CAPACITIES = [8, 16, 26];
+const NETWORK_RING_RADII = [145, 260, 370];
 
 const guidedPrompts = [
-  "I need to build a resume but I have no design skills",
+  "How can I show my skills and achievements to potential employers?",
   "How should I obtain education in America?",
   "I want to learn Python from scratch",
   "Where should I go to find programming competition?",
   "Find tools for my first research paper",
+  "How can I find a therapist and start therapy?",
   "What should I use to organize school and deadlines?",
 ];
 
 const brandHighlights = [
   "Simple recommendations",
   "Direct site and app links",
-  "Starter PDFs for first steps",
+  "Starter docs for first steps",
 ];
 
 const themeOptions = [
@@ -105,6 +118,24 @@ function isUrlLike(value) {
   return /^https?:\/\//i.test(String(value ?? "").trim());
 }
 
+function getUrlHostname(value) {
+  try {
+    return new URL(String(value ?? "").trim()).hostname.replace(/^www\./i, "");
+  } catch (_error) {
+    return "";
+  }
+}
+
+function getLogoUrl(tool) {
+  const rawIcon = String(tool?.icon ?? "").trim();
+  if (isUrlLike(rawIcon)) {
+    return rawIcon;
+  }
+
+  const hostname = getUrlHostname(tool?.url);
+  return hostname ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64` : "";
+}
+
 function getToolInitials(name) {
   const words = String(name ?? "")
     .trim()
@@ -113,22 +144,187 @@ function getToolInitials(name) {
   return (words.map((word) => word[0]).join("").slice(0, 2) || "TL").toUpperCase();
 }
 
+function normalizeIdentityValue(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "");
+}
+
+function getResultIdentityKeys(tool) {
+  return [
+    tool?.slug ? `slug:${normalizeIdentityValue(tool.slug)}` : "",
+    tool?.url ? `url:${normalizeIdentityValue(tool.url)}` : "",
+    tool?.name ? `name:${normalizeIdentityValue(tool.name)}` : "",
+  ].filter(Boolean);
+}
+
+function mergeUniqueResults(existingResults, incomingResults) {
+  const seenKeys = new Set();
+  const mergedResults = [];
+
+  for (const tool of [...existingResults, ...incomingResults]) {
+    const identityKeys = getResultIdentityKeys(tool);
+    if (!identityKeys.length || identityKeys.some((key) => seenKeys.has(key))) {
+      continue;
+    }
+
+    mergedResults.push(tool);
+    identityKeys.forEach((key) => seenKeys.add(key));
+  }
+
+  return mergedResults;
+}
+
+function isSameResult(first, second) {
+  if (!first || !second) {
+    return false;
+  }
+
+  const secondKeys = new Set(getResultIdentityKeys(second));
+  return getResultIdentityKeys(first).some((key) => secondKeys.has(key));
+}
+
+function toSearchExclusion(tool) {
+  return {
+    slug: tool.slug ?? "",
+    name: tool.name ?? "",
+    url: tool.url ?? "",
+  };
+}
+
+function buildNetworkLayout(results) {
+  const nodes = [];
+  let index = 0;
+
+  for (let ringIndex = 0; ringIndex < NETWORK_RING_CAPACITIES.length && index < results.length; ringIndex += 1) {
+    const capacity = NETWORK_RING_CAPACITIES[ringIndex];
+    const radius = NETWORK_RING_RADII[ringIndex];
+    const ringCount = Math.min(capacity, results.length - index);
+    const angleOffset = ringIndex * 0.17;
+
+    for (let slot = 0; slot < ringCount; slot += 1) {
+      const angle = -Math.PI / 2 + angleOffset + (Math.PI * 2 * slot) / ringCount;
+      const spacingNudge = slot % 2 === 0 ? 6 : -6;
+      const x = NETWORK_CENTER.x + Math.cos(angle) * (radius + spacingNudge);
+      const y = NETWORK_CENTER.y + Math.sin(angle) * (radius - spacingNudge);
+      nodes.push({
+        tool: results[index],
+        x: Math.round(x),
+        y: Math.round(y),
+      });
+      index += 1;
+    }
+  }
+
+  return nodes;
+}
+
 function ToolMark({ tool }) {
   const [imageFailed, setImageFailed] = useState(false);
   const rawIcon = String(tool.icon ?? "").trim();
-  const canUseImage = isUrlLike(rawIcon) && !imageFailed;
+  const logoUrl = getLogoUrl(tool);
+  const canUseImage = Boolean(logoUrl) && !imageFailed;
   const fallbackIcon = rawIcon && !isUrlLike(rawIcon) && rawIcon.length <= 4
     ? rawIcon
     : getToolInitials(tool.name);
 
+  useEffect(() => {
+    setImageFailed(false);
+  }, [logoUrl]);
+
   return (
     <div className="tool-mark" aria-hidden="true">
       {canUseImage ? (
-        <img src={rawIcon} alt="" onError={() => setImageFailed(true)} />
+        <img src={logoUrl} alt="" onError={() => setImageFailed(true)} />
       ) : (
         <span>{fallbackIcon}</span>
       )}
     </div>
+  );
+}
+
+function ApplicationNetwork({ query, tools, selectedTool, onSelectTool }) {
+  const nodes = useMemo(() => buildNetworkLayout(tools), [tools]);
+
+  return (
+    <section className="network-panel" aria-label="Application network">
+      <div className="network-panel-heading">
+        <div>
+          <p className="panel-kicker">Application network</p>
+          <h3>{tools.length} close matches around your prompt</h3>
+        </div>
+        <span>{NETWORK_RESULT_LIMIT} result target</span>
+      </div>
+
+      <div className="network-scroll" tabIndex={0} aria-label="Scrollable application network graph">
+        <div className="network-stage">
+          <svg className="network-edges" viewBox="0 0 1180 840" aria-hidden="true">
+            {nodes.map(({ tool, x, y }) => (
+              <line
+                key={`${tool.slug}-edge`}
+                className="network-edge"
+                x1={NETWORK_CENTER.x}
+                y1={NETWORK_CENTER.y}
+                x2={x}
+                y2={y}
+              />
+            ))}
+          </svg>
+
+          <div className="network-center-node" title={query}>
+            <span>Prompt</span>
+            <strong>{query}</strong>
+          </div>
+
+          {nodes.map(({ tool, x, y }, index) => (
+            <button
+              key={`${tool.slug}-${index}`}
+              type="button"
+              className={`network-node${isSameResult(tool, selectedTool) ? " is-selected" : ""}`}
+              style={{
+                "--node-x": `${x}px`,
+                "--node-y": `${y}px`,
+              }}
+              onClick={() => onSelectTool(tool)}
+              title={tool.name}
+            >
+              <ToolMark tool={tool} />
+              <span className="network-node-label">{tool.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {selectedTool ? (
+        <article className="network-detail" aria-label={`Selected application: ${selectedTool.name}`}>
+          <div className="network-detail-main">
+            <div className="result-headline">
+              <ToolMark tool={selectedTool} />
+              <div>
+                <h3>{selectedTool.name}</h3>
+                <p className="result-meta">
+                  {selectedTool.category} / {selectedTool.popularity}
+                </p>
+              </div>
+            </div>
+            <p className="result-description">{selectedTool.description}</p>
+            <p className="result-reason">{selectedTool.relevanceReason}</p>
+            <p className="result-tip">Start here: {selectedTool.starterTip}</p>
+          </div>
+          <div className="result-actions network-detail-actions">
+            <a href={selectedTool.url} target="_blank" rel="noreferrer">
+              Visit tool
+            </a>
+            <a href={`${API_BASE_URL}${selectedTool.guideUrl}`} target="_blank" rel="noreferrer">
+              Open starter doc
+            </a>
+          </div>
+        </article>
+      ) : null}
+    </section>
   );
 }
 
@@ -148,9 +344,16 @@ function App() {
   const [query, setQuery] = useState("");
   const [resultsState, setResultsState] = useState(null);
   const [recentQueries, setRecentQueries] = useState([]);
-  const [showAll, setShowAll] = useState(false);
   const [isPending, setIsPending] = useState(false);
+  const [isSearchingMore, setIsSearchingMore] = useState(false);
   const [error, setError] = useState("");
+  const [resultsNotice, setResultsNotice] = useState("");
+  const [networkState, setNetworkState] = useState(null);
+  const [isNetworkVisible, setIsNetworkVisible] = useState(false);
+  const [isNetworkLoading, setIsNetworkLoading] = useState(false);
+  const [networkError, setNetworkError] = useState("");
+  const [selectedNetworkTool, setSelectedNetworkTool] = useState(null);
+  const [hasMoreResults, setHasMoreResults] = useState(true);
   const [theme, setTheme] = useState(getInitialTheme);
 
   const deferredQuery = useDeferredValue(query);
@@ -194,14 +397,24 @@ function App() {
     }
 
     setError("");
+    setResultsNotice("");
+    setNetworkState(null);
+    setIsNetworkVisible(false);
+    setNetworkError("");
+    setSelectedNetworkTool(null);
+    setHasMoreResults(true);
     setIsPending(true);
-    setShowAll(false);
+    setIsSearchingMore(false);
 
     try {
-      const payload = await searchTools(normalized);
+      const payload = await searchTools(normalized, { limit: RESULT_BATCH_SIZE });
+      const initialResults = mergeUniqueResults([], payload.results ?? []).slice(0, MAX_RESULT_LIMIT);
 
       startTransition(() => {
-        setResultsState(payload);
+        setResultsState({
+          ...payload,
+          results: initialResults,
+        });
         setRecentQueries((current) => {
           const withNewest = [payload.query, ...current];
           return Array.from(new Set(withNewest)).slice(0, 6);
@@ -214,8 +427,103 @@ function App() {
     }
   }
 
-  const visibleResults = resultsState?.results?.slice(0, showAll ? undefined : 5) ?? [];
+  async function runSearchMore() {
+    const currentResults = resultsState?.results ?? [];
+    const normalized = String(resultsState?.query ?? query).trim();
+
+    if (!resultsState || !normalized || currentResults.length >= MAX_RESULT_LIMIT) {
+      return;
+    }
+
+    const nextLimit = Math.min(RESULT_BATCH_SIZE, MAX_RESULT_LIMIT - currentResults.length);
+    setError("");
+    setResultsNotice("");
+    setIsSearchingMore(true);
+
+    try {
+      const payload = await searchTools(normalized, {
+        limit: nextLimit,
+        excludeResults: currentResults.map(toSearchExclusion),
+      });
+      const mergedResults = mergeUniqueResults(currentResults, payload.results ?? []).slice(0, MAX_RESULT_LIMIT);
+      const addedCount = Math.max(mergedResults.length - currentResults.length, 0);
+
+      startTransition(() => {
+        setResultsState((current) => {
+          if (!current || current.query !== resultsState.query) {
+            return current;
+          }
+
+          return {
+            ...current,
+            results: mergedResults,
+            agentTrace: payload.agentTrace,
+            orchestration: payload.orchestration,
+            meta: payload.meta,
+          };
+        });
+      });
+
+      setResultsNotice(
+        addedCount
+          ? `Added ${addedCount} new ${addedCount === 1 ? "result" : "results"}.`
+          : "No more unique results were available for this search.",
+      );
+      setHasMoreResults(addedCount > 0 && mergedResults.length < MAX_RESULT_LIMIT);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setIsSearchingMore(false);
+    }
+  }
+
+  async function runApplicationNetwork() {
+    const normalized = String(resultsState?.query ?? query).trim();
+
+    if (!normalized) {
+      return;
+    }
+
+    if (isNetworkVisible) {
+      setIsNetworkVisible(false);
+      return;
+    }
+
+    setIsNetworkVisible(true);
+
+    if (networkState?.query === normalized && networkState.results?.length) {
+      return;
+    }
+
+    setNetworkError("");
+    setIsNetworkLoading(true);
+    setSelectedNetworkTool(null);
+
+    try {
+      const payload = await fetchApplicationNetwork(normalized, { limit: NETWORK_RESULT_LIMIT });
+      const networkResults = mergeUniqueResults([], payload.results ?? []).slice(0, NETWORK_RESULT_LIMIT);
+
+      startTransition(() => {
+        setNetworkState({
+          ...payload,
+          results: networkResults,
+        });
+        setSelectedNetworkTool(networkResults[0] ?? null);
+      });
+    } catch (requestError) {
+      setNetworkError(requestError.message);
+    } finally {
+      setIsNetworkLoading(false);
+    }
+  }
+
+  const visibleResults = resultsState?.results ?? [];
+  const resultCount = visibleResults.length;
+  const canSearchMore = Boolean(resultsState) && hasMoreResults && resultCount < MAX_RESULT_LIMIT;
+  const nextResultCount = Math.min(resultCount + RESULT_BATCH_SIZE, MAX_RESULT_LIMIT);
   const topResultNames = (resultsState?.results ?? []).slice(0, 3).map((tool) => tool.name);
+  const networkResults =
+    networkState && resultsState && networkState.query === resultsState.query ? networkState.results ?? [] : [];
 
   return (
     <div className="page-shell">
@@ -282,7 +590,7 @@ function App() {
                 onChange={(event) => setQuery(event.target.value)}
               />
               <div className="search-actions">
-                <button type="submit" disabled={isPending}>
+                <button type="submit" disabled={isPending || isSearchingMore}>
                   {isPending ? "Searching..." : "Search SARKSearch"}
                 </button>
                 <span className="subtle-copy">Search first, then open the tools and guides that feel most useful.</span>
@@ -350,6 +658,37 @@ function App() {
                   <p>{resultsState.summary}</p>
                 </div>
 
+                <div className="network-action-row">
+                  <button
+                    type="button"
+                    className="network-toggle"
+                    onClick={runApplicationNetwork}
+                    disabled={isNetworkLoading || isPending}
+                  >
+                    {isNetworkLoading
+                      ? "Building network..."
+                      : isNetworkVisible
+                        ? "Hide Application Networks"
+                        : "See Application Networks"}
+                  </button>
+                  <span>Map up to 50 nearby applications around this prompt.</span>
+                </div>
+
+                {networkError ? <p className="error-text">{networkError}</p> : null}
+
+                {isNetworkVisible && !isNetworkLoading && networkResults.length ? (
+                  <ApplicationNetwork
+                    query={resultsState.query}
+                    tools={networkResults}
+                    selectedTool={selectedNetworkTool}
+                    onSelectTool={setSelectedNetworkTool}
+                  />
+                ) : null}
+
+                {isNetworkVisible && !isNetworkLoading && !networkResults.length && !networkError ? (
+                  <p className="empty-copy">No application network was available for this search yet.</p>
+                ) : null}
+
                 <div className="results-list">
                   {visibleResults.map((tool, index) => (
                     <article key={tool.slug} className="result-row">
@@ -377,29 +716,36 @@ function App() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Open starter PDF
+                          Open starter doc
                         </a>
                       </div>
                     </article>
                   ))}
                 </div>
 
-                {resultsState.results.length > 5 ? (
+                {canSearchMore ? (
                   <button
                     type="button"
                     className="show-more"
-                    onClick={() => setShowAll((current) => !current)}
+                    onClick={runSearchMore}
+                    disabled={isSearchingMore || isPending}
                   >
-                    {showAll ? "Show top 5" : `Show ${resultsState.results.length - 5} more`}
+                    {isSearchingMore ? "Searching more..." : `Search more: ${nextResultCount} results`}
                   </button>
                 ) : null}
+
+                {resultCount >= MAX_RESULT_LIMIT ? (
+                  <p className="empty-copy">You reached the 20-result maximum for this search.</p>
+                ) : null}
+
+                {resultsNotice ? <p className="empty-copy">{resultsNotice}</p> : null}
 
                 <section className="post-search-proof" aria-label="Search result confirmation">
                   <div className="proof-panel proof-panel-primary">
                     <p className="panel-kicker">Popular Starting Points</p>
                     <h3>{topResultNames.length ? topResultNames.join(", ") : "Your first tools are ready"}</h3>
                     <p>
-                      SARKSearch found practical places to begin. Open one tool first, then use the starter PDF
+                      SARKSearch found practical places to begin. Open one tool first, then use the starter doc
                       when you want a guided first step.
                     </p>
                   </div>
