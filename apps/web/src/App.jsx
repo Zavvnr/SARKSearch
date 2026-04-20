@@ -12,6 +12,8 @@ const RESULT_BATCH_SIZE = 5;
 const NETWORK_CENTER = { x: 590, y: 420 };
 const NETWORK_RING_CAPACITIES = [8, 16, 26];
 const NETWORK_RING_RADII = [145, 260, 370];
+const GUIDE_FORMAT_LIMIT = 3;
+const DEFAULT_GUIDE_FORMAT_IDS = ["pdf", "word", "docs"];
 
 const guidedPrompts = [
   "How can I show my skills and achievements to potential employers?",
@@ -27,6 +29,37 @@ const brandHighlights = [
   "Simple recommendations",
   "Direct site and app links",
   "Starter docs for first steps",
+];
+
+const guideFormatOptions = [
+  {
+    id: "pdf",
+    name: "PDF",
+    detail: "Printable guide",
+    actionLabel: "Open PDF",
+    urlKeys: ["pdfGuideUrl"],
+  },
+  {
+    id: "word",
+    name: "Word",
+    detail: "Editable .doc",
+    actionLabel: "Open Word",
+    urlKeys: ["wordGuideUrl", "documentUrl", "guideUrl"],
+  },
+  {
+    id: "docs",
+    name: "Docs",
+    detail: "Google-ready doc",
+    actionLabel: "Open Docs",
+    urlKeys: ["docsGuideUrl", "guideUrl", "documentUrl"],
+  },
+  {
+    id: "html",
+    name: "HTML",
+    detail: "Browser page",
+    actionLabel: "Open HTML",
+    urlKeys: ["htmlGuideUrl"],
+  },
 ];
 
 const themeOptions = [
@@ -118,6 +151,19 @@ function isUrlLike(value) {
   return /^https?:\/\//i.test(String(value ?? "").trim());
 }
 
+function toApiHref(value) {
+  const path = String(value ?? "").trim();
+  if (!path) {
+    return "";
+  }
+
+  if (isUrlLike(path)) {
+    return path;
+  }
+
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 function getUrlHostname(value) {
   try {
     return new URL(String(value ?? "").trim()).hostname.replace(/^www\./i, "");
@@ -195,6 +241,85 @@ function toSearchExclusion(tool) {
   };
 }
 
+function replaceGuideExtension(path, extension) {
+  return String(path ?? "").replace(/\.doc(?=$|\?)/i, `.${extension}`);
+}
+
+function getGuidePath(tool, formatOption) {
+  for (const key of formatOption.urlKeys) {
+    if (tool?.[key]) {
+      return tool[key];
+    }
+  }
+
+  const documentPath = tool?.documentUrl || tool?.guideUrl || "";
+  if (formatOption.id === "pdf") {
+    return replaceGuideExtension(documentPath, "pdf");
+  }
+  if (formatOption.id === "html") {
+    return replaceGuideExtension(documentPath, "html");
+  }
+
+  return documentPath;
+}
+
+function GuideActions({ tool, selectedFormats, className = "" }) {
+  return (
+    <div className={`result-actions${className ? ` ${className}` : ""}`}>
+      <a href={tool.url} target="_blank" rel="noreferrer">
+        Visit tool
+      </a>
+      {selectedFormats.map((formatOption) => {
+        const guidePath = getGuidePath(tool, formatOption);
+        const href = toApiHref(guidePath);
+        if (!href) {
+          return null;
+        }
+
+        return (
+          <a key={formatOption.id} href={href} target="_blank" rel="noreferrer">
+            {formatOption.actionLabel}
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+function GuideFormatPicker({ selectedFormatIds, onToggleFormat }) {
+  const isAtLimit = selectedFormatIds.length >= GUIDE_FORMAT_LIMIT;
+
+  return (
+    <fieldset className="guide-format-picker">
+      <legend>Guidance formats</legend>
+      <div className="guide-format-options" aria-label={`Choose up to ${GUIDE_FORMAT_LIMIT} guidance formats`}>
+        {guideFormatOptions.map((option) => {
+          const isSelected = selectedFormatIds.includes(option.id);
+          const isDisabled = !isSelected && isAtLimit;
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              className={`guide-format-option${isSelected ? " is-selected" : ""}`}
+              onClick={() => onToggleFormat(option.id)}
+              aria-pressed={isSelected}
+              disabled={isDisabled}
+              title={isDisabled ? "Deselect one format first." : option.detail}
+            >
+              <span>{option.name}</span>
+              <small>{option.detail}</small>
+            </button>
+          );
+        })}
+      </div>
+      <p>
+        {selectedFormatIds.length} of {GUIDE_FORMAT_LIMIT} selected. Result guide buttons will match your choices.
+      </p>
+    </fieldset>
+  );
+}
+
 function buildNetworkLayout(results) {
   const nodes = [];
   let index = 0;
@@ -246,7 +371,7 @@ function ToolMark({ tool }) {
   );
 }
 
-function ApplicationNetwork({ query, tools, selectedTool, onSelectTool }) {
+function ApplicationNetwork({ query, tools, selectedTool, selectedGuideFormats, onSelectTool }) {
   const nodes = useMemo(() => buildNetworkLayout(tools), [tools]);
 
   return (
@@ -274,7 +399,7 @@ function ApplicationNetwork({ query, tools, selectedTool, onSelectTool }) {
             ))}
           </svg>
 
-          <div className="network-center-node" title={query}>
+          <div className="network-center-node" title={query} tabIndex={0} aria-label={`Prompt: ${query}`}>
             <span>Prompt</span>
             <strong>{query}</strong>
           </div>
@@ -314,14 +439,11 @@ function ApplicationNetwork({ query, tools, selectedTool, onSelectTool }) {
             <p className="result-reason">{selectedTool.relevanceReason}</p>
             <p className="result-tip">Start here: {selectedTool.starterTip}</p>
           </div>
-          <div className="result-actions network-detail-actions">
-            <a href={selectedTool.url} target="_blank" rel="noreferrer">
-              Visit tool
-            </a>
-            <a href={`${API_BASE_URL}${selectedTool.guideUrl}`} target="_blank" rel="noreferrer">
-              Open starter doc
-            </a>
-          </div>
+          <GuideActions
+            tool={selectedTool}
+            selectedFormats={selectedGuideFormats}
+            className="network-detail-actions"
+          />
         </article>
       ) : null}
     </section>
@@ -355,6 +477,7 @@ function App() {
   const [selectedNetworkTool, setSelectedNetworkTool] = useState(null);
   const [hasMoreResults, setHasMoreResults] = useState(true);
   const [theme, setTheme] = useState(getInitialTheme);
+  const [selectedGuideFormatIds, setSelectedGuideFormatIds] = useState(DEFAULT_GUIDE_FORMAT_IDS);
 
   const deferredQuery = useDeferredValue(query);
 
@@ -524,6 +647,24 @@ function App() {
   const topResultNames = (resultsState?.results ?? []).slice(0, 3).map((tool) => tool.name);
   const networkResults =
     networkState && resultsState && networkState.query === resultsState.query ? networkState.results ?? [] : [];
+  const selectedGuideFormats = useMemo(
+    () => guideFormatOptions.filter((option) => selectedGuideFormatIds.includes(option.id)),
+    [selectedGuideFormatIds],
+  );
+
+  function toggleGuideFormat(formatId) {
+    setSelectedGuideFormatIds((current) => {
+      if (current.includes(formatId)) {
+        return current.length === 1 ? current : current.filter((id) => id !== formatId);
+      }
+
+      if (current.length >= GUIDE_FORMAT_LIMIT) {
+        return current;
+      }
+
+      return [...current, formatId];
+    });
+  }
 
   return (
     <div className="page-shell">
@@ -588,6 +729,10 @@ function App() {
                 rows={3}
                 placeholder="I want to get a job, but I do not know where to start."
                 onChange={(event) => setQuery(event.target.value)}
+              />
+              <GuideFormatPicker
+                selectedFormatIds={selectedGuideFormatIds}
+                onToggleFormat={toggleGuideFormat}
               />
               <div className="search-actions">
                 <button type="submit" disabled={isPending || isSearchingMore}>
@@ -681,6 +826,7 @@ function App() {
                     query={resultsState.query}
                     tools={networkResults}
                     selectedTool={selectedNetworkTool}
+                    selectedGuideFormats={selectedGuideFormats}
                     onSelectTool={setSelectedNetworkTool}
                   />
                 ) : null}
@@ -707,18 +853,7 @@ function App() {
                         <p className="result-reason">{tool.relevanceReason}</p>
                         <p className="result-tip">Start here: {tool.starterTip}</p>
                       </div>
-                      <div className="result-actions">
-                        <a href={tool.url} target="_blank" rel="noreferrer">
-                          Visit tool
-                        </a>
-                        <a
-                          href={`${API_BASE_URL}${tool.guideUrl}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open starter doc
-                        </a>
-                      </div>
+                      <GuideActions tool={tool} selectedFormats={selectedGuideFormats} />
                     </article>
                   ))}
                 </div>

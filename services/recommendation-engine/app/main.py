@@ -72,11 +72,17 @@ def search_application_network(payload: NetworkRequest) -> SearchResponse:
     return _build_search_response(payload.query, payload.limit)
 
 
-@app.get("/guides/{slug}.doc")
-def starter_guide_document(slug: str, query: str = Query(default="your goal")) -> Response:
+def _get_guide_recommendation(slug: str, query: str):
     recommendation = orchestrator.get_recommendation_for_guide(slug, query)
     if not recommendation:
         raise HTTPException(status_code=404, detail="LLM Brain could not reconstruct this starter guide.")
+
+    return recommendation
+
+
+@app.get("/guides/{slug}.doc")
+def starter_guide_document(slug: str, query: str = Query(default="your goal")) -> Response:
+    recommendation = _get_guide_recommendation(slug, query)
 
     return Response(
         content=build_starter_document_html(recommendation, query),
@@ -84,10 +90,18 @@ def starter_guide_document(slug: str, query: str = Query(default="your goal")) -
     )
 
 
+@app.get("/guides/{slug}.html")
+def starter_guide_html(slug: str, query: str = Query(default="your goal")) -> Response:
+    recommendation = _get_guide_recommendation(slug, query)
+
+    return Response(
+        content=build_starter_document_html(recommendation, query),
+        media_type="text/html",
+    )
+
+
 @app.get("/guides/{slug}.pdf")
 def starter_guide(slug: str, query: str = Query(default="your goal")) -> Response:
-    recommendation = orchestrator.get_recommendation_for_guide(slug, query)
-    if not recommendation:
-        raise HTTPException(status_code=404, detail="LLM Brain could not reconstruct this starter guide.")
+    recommendation = _get_guide_recommendation(slug, query)
 
     return Response(content=build_starter_pdf(recommendation, query), media_type="application/pdf")

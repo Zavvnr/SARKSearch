@@ -110,7 +110,10 @@ function buildGuideUrls(slug, query) {
   return {
     guideUrl: `/api/guides/${encodedSlug}.doc?query=${encodedQuery}`,
     documentUrl: `/api/guides/${encodedSlug}.doc?query=${encodedQuery}`,
+    wordGuideUrl: `/api/guides/${encodedSlug}.doc?query=${encodedQuery}`,
+    docsGuideUrl: `/api/guides/${encodedSlug}.doc?query=${encodedQuery}`,
     pdfGuideUrl: `/api/guides/${encodedSlug}.pdf?query=${encodedQuery}`,
+    htmlGuideUrl: `/api/guides/${encodedSlug}.html?query=${encodedQuery}`,
   };
 }
 
@@ -335,6 +338,32 @@ app.get("/api/guides/:slug.pdf", async (request, response) => {
   } catch (error) {
     response.status(502).json({
       error: "Failed to retrieve the starter PDF.",
+      detail: error.message,
+    });
+  }
+});
+
+app.get("/api/guides/:slug.html", async (request, response) => {
+  const query = String(request.query.query ?? "");
+  const slug = request.params.slug;
+
+  try {
+    const upstream = await fetchWithTimeout(
+      `${config.fastApiBaseUrl}/guides/${encodeURIComponent(slug)}.html?query=${encodeURIComponent(query)}`,
+    );
+
+    if (!upstream.ok) {
+      response.status(upstream.status).json({ error: "Guide HTML not available." });
+      return;
+    }
+
+    const html = await upstream.text();
+    response.setHeader("Content-Type", "text/html; charset=utf-8");
+    response.setHeader("Content-Disposition", `inline; filename="${slug}-starter-guide.html"`);
+    response.send(html);
+  } catch (error) {
+    response.status(502).json({
+      error: "Failed to retrieve the starter HTML.",
       detail: error.message,
     });
   }

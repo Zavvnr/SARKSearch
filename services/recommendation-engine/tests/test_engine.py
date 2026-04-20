@@ -622,6 +622,19 @@ class LLMBrainRecommendationEngineTests(TestCase):
         self.assertIn("Checklist for understanding the application", document_html)
         self.assertIn("ChatGPT", document_html)
 
+    def test_fastapi_html_guide_returns_browser_html(self) -> None:
+        original_orchestrator = main_module.orchestrator
+        main_module.orchestrator = OrchestratorAgent(runtime=StubLLMBrainRuntime())
+
+        try:
+            response = main_module.starter_guide_html("chatgpt", "build a resume")
+        finally:
+            main_module.orchestrator = original_orchestrator
+
+        self.assertEqual(response.media_type, "text/html")
+        self.assertIn(b"<!doctype html>", response.body)
+        self.assertIn(b"ChatGPT starter guide", response.body)
+
     def test_fastapi_network_search_returns_50_recommendations(self) -> None:
         original_orchestrator = main_module.orchestrator
         main_module.orchestrator = OrchestratorAgent(runtime=ManyResultsLLMBrainRuntime())

@@ -477,7 +477,8 @@ a {
 .highlight-pill,
 .prompt-pill,
 .recent-item,
-.result-actions a {
+.result-actions a,
+.guide-format-option {
   transition:
     transform 140ms ease,
     border-color 140ms ease,
@@ -562,6 +563,86 @@ a {
   box-shadow:
     0 0 0 2px rgba(0, 0, 0, 0.1),
     0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.guide-format-picker {
+  width: 100%;
+  margin: 1rem 0 0;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface-soft);
+  text-align: left;
+}
+
+.guide-format-picker legend {
+  padding: 0 0.35rem;
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.guide-format-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.guide-format-option {
+  min-height: 4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface-solid);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.65rem 0.72rem;
+  text-align: left;
+}
+
+.guide-format-option:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: var(--surface-solid-hover);
+}
+
+.guide-format-option.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.guide-format-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
+.guide-format-option span {
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.guide-format-option small {
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.guide-format-option.is-selected small {
+  color: var(--accent-deep);
+}
+
+.guide-format-picker p {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .search-actions,
@@ -785,35 +866,87 @@ a {
 .network-center-node {
   left: 590px;
   top: 420px;
-  width: 11rem;
-  min-height: 5.2rem;
+  z-index: 2;
+  width: 8.5rem;
+  min-height: 4.4rem;
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 0.35rem;
   border: 1px solid var(--line);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   background: var(--panel-strong);
   box-shadow: var(--shadow);
   padding: 0.9rem;
   text-align: center;
+  cursor: help;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.network-center-node:hover,
+.network-center-node:focus-visible {
+  transform: translate(-50%, -50%) scale(1.03);
+  border-color: var(--accent);
+}
+
+.network-center-node:focus-visible {
+  outline: none;
+  box-shadow:
+    var(--shadow),
+    0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .network-center-node span {
   color: var(--accent);
-  font-size: 0.75rem;
+  font-size: 1rem;
   font-weight: 700;
-  text-transform: uppercase;
 }
 
 .network-center-node strong {
-  display: -webkit-box;
-  overflow: hidden;
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 0.7rem);
+  z-index: 4;
+  width: min(24rem, calc(100vw - 3rem));
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -0.35rem);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel-strong);
   color: var(--text);
+  box-shadow: var(--shadow);
   font-size: 0.9rem;
-  line-height: 1.25;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 0.85rem 0.95rem;
+}
+
+.network-center-node strong::before {
+  content: "";
+  position: absolute;
+  top: -0.38rem;
+  left: 50%;
+  width: 0.72rem;
+  height: 0.72rem;
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  background: var(--panel-strong);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.network-center-node:hover strong,
+.network-center-node:focus-visible strong {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .network-node {
@@ -1201,6 +1334,10 @@ a {
 
   .highlight-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guide-format-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .highlight-row .highlight-pill:last-child {
