@@ -2,7 +2,7 @@ services:
   - type: web
     name: sarksearch-web
     runtime: static
-    plan: free
+    plan: starter
     branch: master
     autoDeploy: true
     buildCommand: npm ci && npm run build --workspace apps/web
@@ -30,7 +30,7 @@ services:
   - type: web
     name: sarksearch-api
     runtime: node
-    plan: free
+    plan: starter
     branch: master
     autoDeploy: true
     buildCommand: npm ci
@@ -67,7 +67,7 @@ services:
   - type: pserv
     name: sarksearch-engine
     runtime: python
-    plan: free
+    plan: starter
     branch: master
     autoDeploy: true
     buildCommand: pip install -r services/recommendation-engine/requirements.txt
