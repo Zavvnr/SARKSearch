@@ -54,6 +54,15 @@ function getOrigins(name, fallback) {
   return origins.length ? origins : fallback.split(",").map((item) => item.trim());
 }
 
+function normalizeServiceUrl(value, fallback) {
+  const normalized = getString(value, fallback).replace(/\/+$/, "");
+  if (!normalized || /^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  return `http://${normalized}`;
+}
+
 export function buildConfig() {
   const defaultSearchLimit = getNumber("DEFAULT_SEARCH_LIMIT", 5);
   const maxSearchLimit = getNumber("MAX_SEARCH_LIMIT", 20, defaultSearchLimit);
@@ -61,7 +70,7 @@ export function buildConfig() {
   return {
     host: getString("HOST", "127.0.0.1"),
     port: getNumber("PORT", 4000),
-    fastApiBaseUrl: getString("ENGINE_URL", getString("FASTAPI_BASE_URL", "http://127.0.0.1:8000")).replace(/\/+$/, ""),
+    fastApiBaseUrl: normalizeServiceUrl("ENGINE_URL", getString("FASTAPI_BASE_URL", "http://127.0.0.1:8000")),
     cacheTtlMs: getNumber("CACHE_TTL_MS", 300000),
     requestTimeoutMs: getNumber("REQUEST_TIMEOUT_MS", 100000),
     corsOrigins: getOrigins("CORS_ORIGIN", "http://127.0.0.1:5173,http://localhost:5173"),

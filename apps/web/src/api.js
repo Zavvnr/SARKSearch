@@ -17,7 +17,12 @@ function resolveDefaultBaseUrl() {
 }
 
 function normalizeBaseUrl(value) {
-  return String(value ?? resolveDefaultBaseUrl()).replace(/\/+$/, "");
+  const normalized = String(value ?? resolveDefaultBaseUrl()).trim().replace(/\/+$/, "");
+  if (!normalized || /^https?:\/\//i.test(normalized) || normalized.startsWith("/")) {
+    return normalized;
+  }
+
+  return `https://${normalized}`;
 }
 
 const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL || resolveDefaultBaseUrl());
@@ -65,10 +70,20 @@ function toSearchExclusion(item) {
 export async function searchTools(query, options = {}) {
   const normalizedOptions = typeof options === "number" ? { limit: options } : options;
   const limit = normalizedOptions.limit ?? DEFAULT_RESULT_LIMIT;
+  const skipCache = normalizedOptions.skipCache === true;
+  const skipSessionSave = normalizedOptions.skipSessionSave === true;
   const excludeResults = Array.isArray(normalizedOptions.excludeResults)
     ? normalizedOptions.excludeResults.map(toSearchExclusion).filter((item) => item.slug || item.name || item.url)
     : [];
   const body = { query, limit };
+
+  if (skipCache) {
+    body.skipCache = true;
+  }
+
+  if (skipSessionSave) {
+    body.skipSessionSave = true;
+  }
 
   if (excludeResults.length) {
     body.excludeResults = excludeResults;

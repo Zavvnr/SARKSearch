@@ -149,6 +149,8 @@ app.post("/api/search", async (request, response) => {
   const limit = Number.isFinite(parsedLimit)
     ? Math.min(Math.max(parsedLimit, 1), config.maxSearchLimit)
     : config.defaultSearchLimit;
+  const skipCache = request.body?.skipCache === true;
+  const skipSessionSave = request.body?.skipSessionSave === true;
   const excludeResults = normalizeExcludeResults(request.body?.excludeResults);
 
   if (!query) {
@@ -157,7 +159,7 @@ app.post("/api/search", async (request, response) => {
   }
 
   const cacheKey = buildSearchCacheKey(query, limit, excludeResults);
-  const cached = cache.get(cacheKey);
+  const cached = skipCache ? null : cache.get(cacheKey);
 
   if (cached) {
     response.json({
@@ -204,7 +206,7 @@ app.post("/api/search", async (request, response) => {
     };
 
     cache.set(cacheKey, withGuides);
-    if (!excludeResults.length) {
+    if (!excludeResults.length && !skipSessionSave) {
       await saveSearchSession(withGuides);
     }
     response.json(withGuides);

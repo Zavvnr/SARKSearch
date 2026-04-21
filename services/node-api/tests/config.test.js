@@ -120,6 +120,17 @@ await runTest("node api config prefers ENGINE_URL over FASTAPI_BASE_URL", async 
   assert.equal(config.fastApiBaseUrl, "http://127.0.0.1:9001");
 });
 
+await runTest("node api config normalizes protocol-less service references", async () => {
+  const { envPath } = makeEnvFile("node-config-render-host", [
+    "FASTAPI_BASE_URL=sarksearch-engine.render-internal.com:10000",
+  ]);
+
+  process.env.SARKSEARCH_NODE_ENV_PATH = envPath;
+  const { config } = await importConfig("render-host");
+
+  assert.equal(config.fastApiBaseUrl, "http://sarksearch-engine.render-internal.com:10000");
+});
+
 await runTest("node api env example matches active config contract", async () => {
   const envPath = path.join(serviceRoot, ".env.example");
   const values = readEnvExampleValues(envPath);

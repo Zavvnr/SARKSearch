@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   API_BASE_URL,
   MAX_RESULT_LIMIT,
@@ -14,6 +14,9 @@ const NETWORK_RING_CAPACITIES = [8, 16, 26];
 const NETWORK_RING_RADII = [145, 260, 370];
 const GUIDE_FORMAT_LIMIT = 3;
 const DEFAULT_GUIDE_FORMAT_IDS = ["pdf", "word", "docs"];
+const STARTUP_SEARCH_PROMPT =
+  "What are the most used apps? Make this like a tutorial for using the sites.";
+let hasStartedInitialSearch = false;
 
 const guidedPrompts = [
   "How can I show my skills and achievements to potential employers?",
@@ -478,6 +481,7 @@ function App() {
   const [hasMoreResults, setHasMoreResults] = useState(true);
   const [theme, setTheme] = useState(getInitialTheme);
   const [selectedGuideFormatIds, setSelectedGuideFormatIds] = useState(DEFAULT_GUIDE_FORMAT_IDS);
+  const userTouchedQueryRef = useRef(false);
 
   const deferredQuery = useDeferredValue(query);
 
@@ -511,12 +515,17 @@ function App() {
     window.localStorage.setItem("sarksearch-theme", theme);
   }, [theme]);
 
-  async function runSearch(nextQuery) {
+  async function runSearch(nextQuery, options = {}) {
     const normalized = nextQuery.trim();
+    const isAutomatic = options.isAutomatic === true;
 
     if (!normalized) {
       setError("Describe what you want to do so SARKSearch can map it to tools.");
       return;
+    }
+
+    if (!isAutomatic) {
+      userTouchedQueryRef.current = true;
     }
 
     setError("");
@@ -530,7 +539,10 @@ function App() {
     setIsSearchingMore(false);
 
     try {
-      const payload = await searchTools(normalized, { limit: RESULT_BATCH_SIZE });
+      const payload = await searchTools(normalized, {
+        limit: RESULT_BATCH_SIZE,
+        skipSessionSave: options.skipSessionSave,
+      });
       const initialResults = mergeUniqueResults([], payload.results ?? []).slice(0, MAX_RESULT_LIMIT);
 
       startTransition(() => {
@@ -549,6 +561,40 @@ function App() {
       setIsPending(false);
     }
   }
+
+  useEffect(() => {
+    if (hasStartedInitialSearch) {
+      return;
+    }
+
+    hasStartedInitialSearch = true;
+    let isActive = true;
+
+    const warmSearch = async () => {
+      try {
+        await searchTools(STARTUP_SEARCH_PROMPT, {
+          limit: RESULT_BATCH_SIZE,
+          skipCache: true,
+          skipSessionSave: true,
+        });
+      } catch (_error) {
+        // Intentionally ignore the first warm-up failure and let the visible retry run next.
+      }
+
+      if (!isActive || userTouchedQueryRef.current) {
+        return;
+      }
+
+      setQuery(STARTUP_SEARCH_PROMPT);
+      await runSearch(STARTUP_SEARCH_PROMPT, { isAutomatic: true });
+    };
+
+    void warmSearch();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   async function runSearchMore() {
     const currentResults = resultsState?.results ?? [];
@@ -723,13 +769,16 @@ function App() {
               <label className="search-label" htmlFor="query">
                 What do you want help with?
               </label>
-              <textarea
-                id="query"
-                value={query}
-                rows={3}
-                placeholder="I want to get a job, but I do not know where to start."
-                onChange={(event) => setQuery(event.target.value)}
-              />
+                <textarea
+                  id="query"
+                  value={query}
+                  rows={3}
+                  placeholder="I want to get a job, but I do not know where to start."
+                  onChange={(event) => {
+                    userTouchedQueryRef.current = true;
+                    setQuery(event.target.value);
+                  }}
+                />
               <GuideFormatPicker
                 selectedFormatIds={selectedGuideFormatIds}
                 onToggleFormat={toggleGuideFormat}
