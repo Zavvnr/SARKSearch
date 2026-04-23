@@ -13,10 +13,7 @@ services:
         - package-lock.json
     envVars:
       - key: VITE_API_BASE_URL
-        fromService:
-          name: sarksearch-api
-          type: web
-          property: host
+        value: https://sarksearch-api.onrender.com
       - key: VITE_DEFAULT_RESULT_LIMIT
         value: "5"
       - key: VITE_MAX_RESULT_LIMIT
