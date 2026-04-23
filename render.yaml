@@ -2,7 +2,6 @@ services:
   - type: web
     name: sarksearch-web
     runtime: static
-    plan: starter
     branch: master
     autoDeploy: true
     buildCommand: npm ci && npm run build --workspace apps/web
