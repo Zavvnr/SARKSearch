@@ -3,9 +3,14 @@ import {
   API_BASE_URL,
   MAX_RESULT_LIMIT,
   NETWORK_RESULT_LIMIT,
+  createAccount,
   fetchApplicationNetwork,
+  fetchCurrentSession,
   fetchRecentSearches,
+  loginWithPassword,
+  logoutSession,
   searchTools,
+  startGuestSession,
 } from "./api";
 
 const RESULT_BATCH_SIZE = 5;
@@ -16,6 +21,9 @@ const GUIDE_FORMAT_LIMIT = 3;
 const DEFAULT_GUIDE_FORMAT_IDS = ["pdf", "word", "docs"];
 const STARTUP_SEARCH_PROMPT =
   "What are the most used apps? Make this like a tutorial for using the sites.";
+const RECENT_SEARCH_LIMIT = 10;
+const AUTH_TOKEN_STORAGE_KEY = "sarksearch-auth-token";
+const GUEST_TOKEN_STORAGE_KEY = "sarksearch-guest-token";
 let hasStartedInitialSearch = false;
 
 const guidedPrompts = [
@@ -104,19 +112,6 @@ const themeOptions = [
   },
 ];
 
-function getInitialTheme() {
-  if (typeof window === "undefined") {
-    return themeOptions[0].id;
-  }
-
-  const savedTheme = window.localStorage.getItem("sarksearch-theme");
-  if (themeOptions.some((option) => option.id === savedTheme)) {
-    return savedTheme;
-  }
-
-  return themeOptions[0].id;
-}
-
 const credits = [
   {
     name: "OpenAI",
@@ -126,7 +121,7 @@ const credits = [
   {
     name: "MongoDB",
     href: "https://www.mongodb.com/",
-    detail: "optional search persistence",
+    detail: "optional account persistence",
   },
   {
     name: "React",
@@ -149,6 +144,160 @@ const credits = [
     detail: "deployment platform",
   },
 ];
+
+function createEmptyAuthForm() {
+  return {
+    name: "",
+    email: "",
+    password: "",
+  };
+}
+
+function normalizeEmail(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function sanitizeName(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? "").trim());
+}
+
+function buildRecentQueryList(value) {
+  const queries = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const nextQueries = [];
+
+  for (const item of queries) {
+    const query = String(item ?? "").trim();
+    const key = query.toLowerCase();
+
+    if (!query || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    nextQueries.push(query);
+
+    if (nextQueries.length >= RECENT_SEARCH_LIMIT) {
+      break;
+    }
+  }
+
+  return nextQueries;
+}
+
+function addRecentQuery(value, query) {
+  return buildRecentQueryList([query, ...(Array.isArray(value) ? value : [])]);
+}
+
+function isUserSession(session) {
+  return session?.kind === "user" && Boolean(session?.user?.email);
+}
+
+function maskEmail(value) {
+  const normalized = normalizeEmail(value);
+  const atIndex = normalized.indexOf("@");
+  if (atIndex <= 0) {
+    return "";
+  }
+
+  const localPart = normalized.slice(0, atIndex);
+  const domain = normalized.slice(atIndex + 1);
+  const visibleLocal = localPart.slice(0, Math.min(2, localPart.length));
+  return `${visibleLocal}${"*".repeat(Math.max(localPart.length - visibleLocal.length, 1))}@${domain}`;
+}
+
+function getSessionLabel(session) {
+  if (isUserSession(session)) {
+    return session.user.name || maskEmail(session.user.email);
+  }
+
+  return "Default guest";
+}
+
+function getSessionInitials(session) {
+  if (!isUserSession(session)) {
+    return "";
+  }
+
+  const source = String(session.user?.name || session.user?.email || "").trim();
+  if (!source) {
+    return "";
+  }
+
+  return source
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function getStoredToken(storage, key) {
+  if (typeof window === "undefined" || !storage) {
+    return "";
+  }
+
+  return String(storage.getItem(key) ?? "").trim();
+}
+
+function getStoredUserToken() {
+  return typeof window === "undefined" ? "" : getStoredToken(window.localStorage, AUTH_TOKEN_STORAGE_KEY);
+}
+
+function getStoredGuestToken() {
+  return typeof window === "undefined" ? "" : getStoredToken(window.sessionStorage, GUEST_TOKEN_STORAGE_KEY);
+}
+
+function persistSessionToken(token, session) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (isUserSession(session)) {
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    window.sessionStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+    return;
+  }
+
+  window.sessionStorage.setItem(GUEST_TOKEN_STORAGE_KEY, token);
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+function clearStoredUserToken() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+function clearStoredGuestToken() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+}
+
+function getInitialTheme() {
+  if (typeof window === "undefined") {
+    return themeOptions[0].id;
+  }
+
+  const savedTheme = window.localStorage.getItem("sarksearch-theme");
+  if (themeOptions.some((option) => option.id === savedTheme)) {
+    return savedTheme;
+  }
+
+  return themeOptions[0].id;
+}
 
 function isUrlLike(value) {
   return /^https?:\/\//i.test(String(value ?? "").trim());
@@ -465,10 +614,250 @@ function BrandMark() {
   );
 }
 
+function AccountMenu({
+  session,
+  authForm,
+  canSubmitLogin,
+  canSubmitSignup,
+  isPending,
+  error,
+  onChangeMode,
+  onFieldChange,
+  onSubmitLogin,
+  onSubmitSignup,
+  onStartGuest,
+}) {
+  const [openPanel, setOpenPanel] = useState("");
+  const menuRef = useRef(null);
+  const isUser = isUserSession(session);
+  const maskedEmail = maskEmail(session?.user?.email);
+  const initials = getSessionInitials(session);
+  const isMenuOpen = openPanel === "menu";
+  const isPopoverOpen = openPanel === "login" || openPanel === "signup";
+  const isLoginOpen = openPanel === "login";
+  const popoverTitleId = isLoginOpen ? "login-popover-title" : "signup-popover-title";
+
+  useEffect(() => {
+    if (!openPanel) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (!menuRef.current?.contains(event.target)) {
+        setOpenPanel("");
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setOpenPanel("");
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openPanel]);
+
+  useEffect(() => {
+    setOpenPanel("");
+  }, [session?.kind, session?.user?.id]);
+
+  function handleMenuToggle() {
+    setOpenPanel((current) => (current ? "" : "menu"));
+  }
+
+  function handleOpenForm(nextMode) {
+    onChangeMode(nextMode);
+    setOpenPanel(nextMode);
+  }
+
+  async function handleGuestAction() {
+    await onStartGuest();
+    setOpenPanel("");
+  }
+
+  return (
+    <div className="account-menu" ref={menuRef}>
+      <button
+        type="button"
+        className={`account-menu-button${openPanel ? " is-active" : ""}`}
+        onClick={handleMenuToggle}
+        aria-expanded={Boolean(openPanel)}
+        aria-label={isUser ? `Open account menu for ${getSessionLabel(session)}` : "Open account menu"}
+      >
+        <span className={`account-avatar${initials ? " has-initials" : ""}`} aria-hidden="true">
+          {initials ? (
+            <span className="account-avatar-text">{initials}</span>
+          ) : (
+            <svg viewBox="0 0 24 24" className="account-avatar-icon">
+              <path d="M12 12.2a4.1 4.1 0 1 0-4.1-4.1 4.1 4.1 0 0 0 4.1 4.1Z" />
+              <path d="M4.8 19.2a7.5 7.5 0 0 1 14.4 0" />
+            </svg>
+          )}
+        </span>
+      </button>
+
+      {isMenuOpen ? (
+        <div className="account-popover account-popover-menu" role="menu" aria-label="Account options">
+          <p className="panel-kicker">Account</p>
+          {isUser ? (
+            <>
+              <div className="account-menu-summary">
+                <strong className="account-menu-name">{session?.user?.name || "Signed-in user"}</strong>
+                {maskedEmail ? <span className="account-menu-email">{maskedEmail}</span> : null}
+              </div>
+              <button
+                type="button"
+                className="account-menu-item"
+                onClick={handleGuestAction}
+                disabled={isPending}
+                role="menuitem"
+              >
+                Use default guest
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="account-menu-copy">Choose an option to save searches and keep your account history.</p>
+              <div className="account-menu-list">
+                <button
+                  type="button"
+                  className="account-menu-item"
+                  onClick={() => handleOpenForm("login")}
+                  disabled={isPending}
+                  role="menuitem"
+                >
+                  Log in
+                </button>
+                <button
+                  type="button"
+                  className="account-menu-item"
+                  onClick={() => handleOpenForm("signup")}
+                  disabled={isPending}
+                  role="menuitem"
+                >
+                  Create account
+                </button>
+              </div>
+            </>
+          )}
+          {error ? <p className="auth-error-text auth-error-inline">{error}</p> : null}
+        </div>
+      ) : null}
+
+      {isPopoverOpen ? (
+        <div className="account-popover auth-popover" role="dialog" aria-modal="false" aria-labelledby={popoverTitleId}>
+          <div className="auth-popover-header">
+            <button type="button" className="account-popover-back" onClick={() => setOpenPanel("menu")}>
+              Back
+            </button>
+            <button
+              type="button"
+              className="auth-popover-close"
+              onClick={() => setOpenPanel("")}
+              aria-label="Close account pop-up"
+            >
+              Close
+            </button>
+          </div>
+          <p className="panel-kicker">{isLoginOpen ? "Saved account" : "New account"}</p>
+          <h3 className="auth-popover-title" id={popoverTitleId}>
+            {isLoginOpen ? "Log in" : "Create account"}
+          </h3>
+          <p className="auth-popover-copy">
+            {isLoginOpen
+              ? "Use your email and password to continue with your saved backend search history."
+              : "Use any email and a password with at least 8 characters to start saving searches."}
+          </p>
+
+          {isLoginOpen ? (
+            <form className="account-form" onSubmit={onSubmitLogin}>
+              <label htmlFor="login-email">Log in with email and password</label>
+              <div className="auth-fields">
+                <input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  value={authForm.email}
+                  placeholder="you@example.com"
+                  onChange={(event) => onFieldChange("email", event.target.value)}
+                />
+                <input
+                  id="login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={authForm.password}
+                  placeholder="Password"
+                  onChange={(event) => onFieldChange("password", event.target.value)}
+                />
+              </div>
+              <div className="auth-submit-row">
+                <button type="submit" className="auth-submit-button" disabled={!canSubmitLogin || isPending}>
+                  {isPending ? "Logging in..." : "Log in"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form className="account-form" onSubmit={onSubmitSignup}>
+              <label htmlFor="signup-name">Create account</label>
+              <div className="auth-fields">
+                <input
+                  id="signup-name"
+                  type="text"
+                  autoComplete="name"
+                  value={authForm.name}
+                  placeholder="Name (optional)"
+                  onChange={(event) => onFieldChange("name", event.target.value)}
+                />
+                <input
+                  id="signup-email"
+                  type="email"
+                  autoComplete="email"
+                  value={authForm.email}
+                  placeholder="you@example.com"
+                  onChange={(event) => onFieldChange("email", event.target.value)}
+                />
+                <input
+                  id="signup-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={authForm.password}
+                  placeholder="At least 8 characters"
+                  onChange={(event) => onFieldChange("password", event.target.value)}
+                />
+              </div>
+              <div className="auth-submit-row">
+                <button type="submit" className="auth-submit-button" disabled={!canSubmitSignup || isPending}>
+                  {isPending ? "Creating..." : "Create account"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {error ? <p className="auth-error-text">{error}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function App() {
   const [query, setQuery] = useState("");
   const [resultsState, setResultsState] = useState(null);
   const [recentQueries, setRecentQueries] = useState([]);
+  const [authState, setAuthState] = useState({
+    status: "loading",
+    token: "",
+    session: null,
+  });
+  const [authForm, setAuthForm] = useState(createEmptyAuthForm);
+  const [authError, setAuthError] = useState("");
+  const [isAuthPending, setIsAuthPending] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [isSearchingMore, setIsSearchingMore] = useState(false);
   const [error, setError] = useState("");
@@ -482,21 +871,150 @@ function App() {
   const [theme, setTheme] = useState(getInitialTheme);
   const [selectedGuideFormatIds, setSelectedGuideFormatIds] = useState(DEFAULT_GUIDE_FORMAT_IDS);
   const userTouchedQueryRef = useRef(false);
+  const sessionTokenRef = useRef("");
 
   const deferredQuery = useDeferredValue(query);
-
   const normalizedDeferredQuery = deferredQuery.trim().toLowerCase();
   const visiblePrompts = !normalizedDeferredQuery
     ? guidedPrompts
     : guidedPrompts.filter((prompt) => prompt.toLowerCase().includes(normalizedDeferredQuery)).slice(0, 5);
+  const isSessionReady = authState.status === "ready" && Boolean(authState.token && authState.session?.id);
+  const guestMode = !isUserSession(authState.session);
+  const canSubmitLogin = isValidEmail(authForm.email) && authForm.password.length >= 8;
+  const canSubmitSignup = isValidEmail(authForm.email) && authForm.password.length >= 8;
+
+  useEffect(() => {
+    sessionTokenRef.current = authState.token;
+  }, [authState.token]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("sarksearch-theme", theme);
+  }, [theme]);
+
+  function resetSearchExperience(options = {}) {
+    const clearQuery = options.clearQuery === true;
+
+    setRecentQueries([]);
+    setResultsState(null);
+    setError("");
+    setResultsNotice("");
+    setNetworkState(null);
+    setIsNetworkVisible(false);
+    setIsNetworkLoading(false);
+    setNetworkError("");
+    setSelectedNetworkTool(null);
+    setHasMoreResults(true);
+    setIsPending(false);
+    setIsSearchingMore(false);
+
+    if (clearQuery) {
+      setQuery("");
+      userTouchedQueryRef.current = false;
+    }
+  }
+
+  function applySession(token, session, options = {}) {
+    persistSessionToken(token, session);
+    setAuthState({
+      status: "ready",
+      token,
+      session,
+    });
+    setAuthError("");
+    setAuthForm(createEmptyAuthForm());
+
+    if (options.resetWorkspace === true) {
+      resetSearchExperience({ clearQuery: true });
+    }
+  }
+
+  function retireSession(previousToken, nextToken) {
+    if (!previousToken || previousToken === nextToken) {
+      return;
+    }
+
+    void logoutSession(previousToken).catch(() => {});
+  }
 
   useEffect(() => {
     let isActive = true;
 
-    fetchRecentSearches()
+    const restoreSession = async () => {
+      const storedUserToken = getStoredUserToken();
+      if (storedUserToken) {
+        try {
+          const payload = await fetchCurrentSession(storedUserToken);
+          if (!isActive) {
+            return;
+          }
+
+          applySession(storedUserToken, payload.session);
+          return;
+        } catch (_error) {
+          clearStoredUserToken();
+        }
+      }
+
+      const storedGuestToken = getStoredGuestToken();
+      if (storedGuestToken) {
+        try {
+          const payload = await fetchCurrentSession(storedGuestToken);
+          if (!isActive) {
+            return;
+          }
+
+          applySession(storedGuestToken, payload.session);
+          return;
+        } catch (_error) {
+          clearStoredGuestToken();
+        }
+      }
+
+      try {
+        const payload = await startGuestSession();
+        if (!isActive) {
+          return;
+        }
+
+        applySession(payload.token, payload.session);
+      } catch (requestError) {
+        if (!isActive) {
+          return;
+        }
+
+        setAuthError(requestError.message);
+        setAuthState({
+          status: "ready",
+          token: "",
+          session: null,
+        });
+      }
+    };
+
+    void restoreSession();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!isSessionReady) {
+      setRecentQueries([]);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    setRecentQueries([]);
+
+    fetchRecentSearches(authState.token)
       .then((payload) => {
         if (isActive) {
-          setRecentQueries(payload.sessions ?? []);
+          setRecentQueries(buildRecentQueryList(payload.sessions ?? []));
         }
       })
       .catch(() => {
@@ -508,16 +1026,17 @@ function App() {
     return () => {
       isActive = false;
     };
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("sarksearch-theme", theme);
-  }, [theme]);
+  }, [authState.token, authState.session?.id, isSessionReady]);
 
   async function runSearch(nextQuery, options = {}) {
     const normalized = nextQuery.trim();
     const isAutomatic = options.isAutomatic === true;
+    const shouldStoreRecent = !isAutomatic && options.skipRecent !== true;
+
+    if (!isSessionReady) {
+      setError("SARKSearch is still starting your session. Try again in a moment.");
+      return;
+    }
 
     if (!normalized) {
       setError("Describe what you want to do so SARKSearch can map it to tools.");
@@ -541,7 +1060,8 @@ function App() {
     try {
       const payload = await searchTools(normalized, {
         limit: RESULT_BATCH_SIZE,
-        skipSessionSave: options.skipSessionSave,
+        sessionToken: authState.token,
+        skipSessionSave: options.skipSessionSave === true || !shouldStoreRecent,
       });
       const initialResults = mergeUniqueResults([], payload.results ?? []).slice(0, MAX_RESULT_LIMIT);
 
@@ -550,10 +1070,10 @@ function App() {
           ...payload,
           results: initialResults,
         });
-        setRecentQueries((current) => {
-          const withNewest = [payload.query, ...current];
-          return Array.from(new Set(withNewest)).slice(0, 6);
-        });
+
+        if (shouldStoreRecent) {
+          setRecentQueries((current) => addRecentQuery(current, payload.query));
+        }
       });
     } catch (requestError) {
       setError(requestError.message);
@@ -563,7 +1083,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (hasStartedInitialSearch) {
+    if (!isSessionReady || hasStartedInitialSearch) {
       return;
     }
 
@@ -574,6 +1094,7 @@ function App() {
       try {
         await searchTools(STARTUP_SEARCH_PROMPT, {
           limit: RESULT_BATCH_SIZE,
+          sessionToken: authState.token,
           skipCache: true,
           skipSessionSave: true,
         });
@@ -594,11 +1115,16 @@ function App() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [authState.token, isSessionReady]);
 
   async function runSearchMore() {
     const currentResults = resultsState?.results ?? [];
     const normalized = String(resultsState?.query ?? query).trim();
+
+    if (!isSessionReady) {
+      setError("SARKSearch is still starting your session. Try again in a moment.");
+      return;
+    }
 
     if (!resultsState || !normalized || currentResults.length >= MAX_RESULT_LIMIT) {
       return;
@@ -612,7 +1138,9 @@ function App() {
     try {
       const payload = await searchTools(normalized, {
         limit: nextLimit,
+        sessionToken: authState.token,
         excludeResults: currentResults.map(toSearchExclusion),
+        skipSessionSave: true,
       });
       const mergedResults = mergeUniqueResults(currentResults, payload.results ?? []).slice(0, MAX_RESULT_LIMIT);
       const addedCount = Math.max(mergedResults.length - currentResults.length, 0);
@@ -649,6 +1177,11 @@ function App() {
   async function runApplicationNetwork() {
     const normalized = String(resultsState?.query ?? query).trim();
 
+    if (!isSessionReady) {
+      setNetworkError("SARKSearch is still starting your session. Try again in a moment.");
+      return;
+    }
+
     if (!normalized) {
       return;
     }
@@ -669,7 +1202,10 @@ function App() {
     setSelectedNetworkTool(null);
 
     try {
-      const payload = await fetchApplicationNetwork(normalized, { limit: NETWORK_RESULT_LIMIT });
+      const payload = await fetchApplicationNetwork(normalized, {
+        limit: NETWORK_RESULT_LIMIT,
+        sessionToken: authState.token,
+      });
       const networkResults = mergeUniqueResults([], payload.results ?? []).slice(0, NETWORK_RESULT_LIMIT);
 
       startTransition(() => {
@@ -683,6 +1219,100 @@ function App() {
       setNetworkError(requestError.message);
     } finally {
       setIsNetworkLoading(false);
+    }
+  }
+
+  function handleAuthFieldChange(field, value) {
+    setAuthForm((current) => ({
+      ...current,
+      [field]: field === "email" ? value.toLowerCase() : value,
+    }));
+  }
+
+  function handleAuthModeChange(nextMode) {
+    setAuthError("");
+    setAuthForm((current) => ({
+      ...current,
+      password: "",
+    }));
+  }
+
+  async function handleLoginSubmit(event) {
+    event.preventDefault();
+
+    if (!canSubmitLogin) {
+      setAuthError("Enter a valid email and a password with at least 8 characters.");
+      return;
+    }
+
+    const previousToken = sessionTokenRef.current;
+    setIsAuthPending(true);
+    setAuthError("");
+
+    try {
+      const payload = await loginWithPassword({
+        email: normalizeEmail(authForm.email),
+        password: authForm.password,
+      });
+
+      applySession(payload.token, payload.session, { resetWorkspace: true });
+      retireSession(previousToken, payload.token);
+    } catch (requestError) {
+      setAuthError(requestError.message);
+      setAuthForm((current) => ({
+        ...current,
+        password: "",
+      }));
+    } finally {
+      setIsAuthPending(false);
+    }
+  }
+
+  async function handleSignupSubmit(event) {
+    event.preventDefault();
+
+    if (!canSubmitSignup) {
+      setAuthError("Enter a valid email and a password with at least 8 characters.");
+      return;
+    }
+
+    const previousToken = sessionTokenRef.current;
+    setIsAuthPending(true);
+    setAuthError("");
+
+    try {
+      const payload = await createAccount({
+        name: sanitizeName(authForm.name),
+        email: normalizeEmail(authForm.email),
+        password: authForm.password,
+      });
+
+      applySession(payload.token, payload.session, { resetWorkspace: true });
+      retireSession(previousToken, payload.token);
+    } catch (requestError) {
+      setAuthError(requestError.message);
+      setAuthForm((current) => ({
+        ...current,
+        password: "",
+      }));
+    } finally {
+      setIsAuthPending(false);
+    }
+  }
+
+  async function handleUseGuest() {
+    const previousToken = sessionTokenRef.current;
+    setIsAuthPending(true);
+    setAuthError("");
+
+    try {
+      const payload = await startGuestSession();
+      applySession(payload.token, payload.session, { resetWorkspace: true });
+      retireSession(previousToken, payload.token);
+    } catch (requestError) {
+      setAuthError(requestError.message);
+    } finally {
+      setIsAuthPending(false);
     }
   }
 
@@ -731,24 +1361,40 @@ function App() {
                 </div>
               </div>
 
-              <div className="theme-dock" role="group" aria-label="Choose a theme">
-                {themeOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`theme-icon${theme === option.id ? " is-active" : ""}`}
-                    onClick={() => setTheme(option.id)}
-                    aria-label={`${option.name} theme`}
-                    title={`${option.name}: ${option.detail}`}
-                    style={{
-                      "--theme-swatch-a": option.swatch[0],
-                      "--theme-swatch-b": option.swatch[1],
-                      "--theme-swatch-c": option.swatch[2],
-                    }}
-                  >
-                    <span className="theme-icon-dot" aria-hidden="true" />
-                  </button>
-                ))}
+              <div className="hero-controls">
+                <AccountMenu
+                  session={authState.session}
+                  authForm={authForm}
+                  canSubmitLogin={canSubmitLogin}
+                  canSubmitSignup={canSubmitSignup}
+                  isPending={isAuthPending || authState.status === "loading"}
+                  error={authError}
+                  onChangeMode={handleAuthModeChange}
+                  onFieldChange={handleAuthFieldChange}
+                  onSubmitLogin={handleLoginSubmit}
+                  onSubmitSignup={handleSignupSubmit}
+                  onStartGuest={handleUseGuest}
+                />
+
+                <div className="theme-dock" role="group" aria-label="Choose a theme">
+                  {themeOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`theme-icon${theme === option.id ? " is-active" : ""}`}
+                      onClick={() => setTheme(option.id)}
+                      aria-label={`${option.name} theme`}
+                      title={`${option.name}: ${option.detail}`}
+                      style={{
+                        "--theme-swatch-a": option.swatch[0],
+                        "--theme-swatch-b": option.swatch[1],
+                        "--theme-swatch-c": option.swatch[2],
+                      }}
+                    >
+                      <span className="theme-icon-dot" aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -769,23 +1415,28 @@ function App() {
               <label className="search-label" htmlFor="query">
                 What do you want help with?
               </label>
-                <textarea
-                  id="query"
-                  value={query}
-                  rows={3}
-                  placeholder="I want to get a job, but I do not know where to start."
-                  onChange={(event) => {
-                    userTouchedQueryRef.current = true;
-                    setQuery(event.target.value);
-                  }}
-                />
+              <textarea
+                id="query"
+                value={query}
+                rows={3}
+                placeholder="I want to get a job, but I do not know where to start."
+                disabled={!isSessionReady}
+                onChange={(event) => {
+                  userTouchedQueryRef.current = true;
+                  setQuery(event.target.value);
+                }}
+              />
               <GuideFormatPicker
                 selectedFormatIds={selectedGuideFormatIds}
                 onToggleFormat={toggleGuideFormat}
               />
               <div className="search-actions">
-                <button type="submit" disabled={isPending || isSearchingMore}>
-                  {isPending ? "Searching..." : "Search SARKSearch"}
+                <button type="submit" disabled={!isSessionReady || isPending || isSearchingMore}>
+                  {authState.status === "loading"
+                    ? "Starting session..."
+                    : isPending
+                      ? "Searching..."
+                      : "Search SARKSearch"}
                 </button>
                 <span className="subtle-copy">Search first, then open the tools and guides that feel most useful.</span>
               </div>
@@ -857,7 +1508,7 @@ function App() {
                     type="button"
                     className="network-toggle"
                     onClick={runApplicationNetwork}
-                    disabled={isNetworkLoading || isPending}
+                    disabled={!isSessionReady || isNetworkLoading || isPending}
                   >
                     {isNetworkLoading
                       ? "Building network..."
@@ -912,7 +1563,7 @@ function App() {
                     type="button"
                     className="show-more"
                     onClick={runSearchMore}
-                    disabled={isSearchingMore || isPending}
+                    disabled={!isSessionReady || isSearchingMore || isPending}
                   >
                     {isSearchingMore ? "Searching more..." : `Search more: ${nextResultCount} results`}
                   </button>
@@ -951,6 +1602,11 @@ function App() {
               <div>
                 <p className="panel-kicker">Recent searches</p>
                 <h2>Jump back into something you already explored</h2>
+                <p className="account-note recent-note">
+                  {guestMode
+                    ? "Default guest history resets when you start or restart the guest session."
+                    : `${getSessionLabel(authState.session)} keeps the latest ${RECENT_SEARCH_LIMIT} searches.`}
+                </p>
               </div>
             </div>
 
@@ -971,7 +1627,11 @@ function App() {
                 ))}
               </div>
             ) : (
-              <p className="empty-copy">Your recent searches will show up here after the first search.</p>
+              <p className="empty-copy">
+                {guestMode
+                  ? "Guest recent searches stay empty until you search in this guest session."
+                  : "This account will show up to 10 recent searches after the first one."}
+              </p>
             )}
           </section>
         </section>

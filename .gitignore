@@ -2,11 +2,12 @@ node_modules/
 dist/
 .DS_Store
 .env
-.env.local
+.env.*
+!.env.example
+!**/.env.example
 .venv/
 __pycache__/
 *.pyc
 coverage/
 tmp/
 **/.tmp-tests/
-.env.example

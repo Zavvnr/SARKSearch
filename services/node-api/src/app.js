@@ -3,9 +3,14 @@ import express from "express";
 import { config } from "./lib/config.js";
 import { TtlCache } from "./lib/cache.js";
 import {
+  createGuestSession,
   getPersistenceMode,
+  invalidateAuthSession,
   initializePersistence,
   listRecentSearches,
+  loginUser,
+  registerUser,
+  resolveAuthSession,
   saveSearchSession,
 } from "./lib/store.js";
 import {
@@ -127,6 +132,65 @@ function attachGuideUrls(payload, query) {
   };
 }
 
+function getSessionToken(request) {
+  const authorization = String(request.get("authorization") ?? "").trim();
+  if (/^bearer\s+/i.test(authorization)) {
+    return authorization.replace(/^bearer\s+/i, "").trim();
+  }
+
+  return String(request.get("x-sarksearch-session") ?? "").trim();
+}
+
+function normalizeEmail(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeName(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? "").trim());
+}
+
+function validatePassword(value) {
+  return String(value ?? "").length >= 8;
+}
+
+async function getAuthContext(request) {
+  const token = getSessionToken(request);
+  if (!token) {
+    return null;
+  }
+
+  return resolveAuthSession(token);
+}
+
+function buildSessionPayload(authContext, token = "") {
+  return {
+    ...(token ? { token } : {}),
+    session: {
+      id: authContext.sessionId,
+      kind: authContext.kind,
+      user: authContext.user,
+      label: authContext.user?.name || authContext.user?.email || "Default guest",
+    },
+  };
+}
+
+function getStatusCode(error) {
+  return Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+}
+
+function sendRequestError(response, error, fallbackMessage) {
+  response.status(getStatusCode(error)).json({
+    error: error?.message || fallbackMessage,
+  });
+}
+
 app.use(cors(buildCorsOptions()));
 app.use(express.json());
 
@@ -138,13 +202,85 @@ app.get("/api/health", (_request, response) => {
   });
 });
 
-app.get("/api/sessions/recent", async (_request, response) => {
-  const sessions = await listRecentSearches();
+app.post("/api/auth/guest", async (_request, response) => {
+  try {
+    const { token, authContext } = await createGuestSession();
+    response.status(201).json(buildSessionPayload(authContext, token));
+  } catch (error) {
+    sendRequestError(response, error, "Could not start a guest session.");
+  }
+});
+
+app.post("/api/auth/signup", async (request, response) => {
+  const email = normalizeEmail(request.body?.email);
+  const password = String(request.body?.password ?? "");
+  const name = normalizeName(request.body?.name);
+
+  if (!isValidEmail(email)) {
+    response.status(400).json({ error: "Enter a valid email address." });
+    return;
+  }
+
+  if (!validatePassword(password)) {
+    response.status(400).json({ error: "Use a password with at least 8 characters." });
+    return;
+  }
+
+  try {
+    const { token, authContext } = await registerUser({ email, password, name });
+    response.status(201).json(buildSessionPayload(authContext, token));
+  } catch (error) {
+    sendRequestError(response, error, "Could not create the account.");
+  }
+});
+
+app.post("/api/auth/login", async (request, response) => {
+  const email = normalizeEmail(request.body?.email);
+  const password = String(request.body?.password ?? "");
+
+  if (!isValidEmail(email)) {
+    response.status(400).json({ error: "Enter a valid email address." });
+    return;
+  }
+
+  if (!password) {
+    response.status(400).json({ error: "Password is required." });
+    return;
+  }
+
+  try {
+    const { token, authContext } = await loginUser({ email, password });
+    response.json(buildSessionPayload(authContext, token));
+  } catch (error) {
+    sendRequestError(response, error, "Could not log in.");
+  }
+});
+
+app.get("/api/auth/session", async (request, response) => {
+  const authContext = await getAuthContext(request);
+
+  if (!authContext) {
+    response.status(401).json({ error: "Your session is no longer active." });
+    return;
+  }
+
+  response.json(buildSessionPayload(authContext));
+});
+
+app.post("/api/auth/logout", async (request, response) => {
+  await invalidateAuthSession(getSessionToken(request));
+  response.json({ ok: true });
+});
+
+app.get("/api/sessions/recent", async (request, response) => {
+  const authContext = await getAuthContext(request);
+  const sessions = await listRecentSearches({ authContext });
   response.json({ sessions });
 });
 
 app.post("/api/search", async (request, response) => {
   const query = String(request.body?.query ?? "").trim();
+  const authContext = await getAuthContext(request);
   const parsedLimit = Number.parseInt(String(request.body?.limit ?? config.defaultSearchLimit), 10);
   const limit = Number.isFinite(parsedLimit)
     ? Math.min(Math.max(parsedLimit, 1), config.maxSearchLimit)
@@ -162,7 +298,7 @@ app.post("/api/search", async (request, response) => {
   const cached = skipCache ? null : cache.get(cacheKey);
 
   if (cached) {
-    response.json({
+    const cachedResponse = {
       ...cached,
       meta: {
         ...(cached.meta ?? {}),
@@ -170,7 +306,13 @@ app.post("/api/search", async (request, response) => {
         excludedResults: excludeResults.length,
         persistenceMode: getPersistenceMode(),
       },
-    });
+    };
+
+    if (authContext && !excludeResults.length && !skipSessionSave) {
+      await saveSearchSession(cachedResponse, { authContext });
+    }
+
+    response.json(cachedResponse);
     return;
   }
 
@@ -206,8 +348,8 @@ app.post("/api/search", async (request, response) => {
     };
 
     cache.set(cacheKey, withGuides);
-    if (!excludeResults.length && !skipSessionSave) {
-      await saveSearchSession(withGuides);
+    if (authContext && !excludeResults.length && !skipSessionSave) {
+      await saveSearchSession(withGuides, { authContext });
     }
     response.json(withGuides);
   } catch (error) {

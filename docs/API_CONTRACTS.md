@@ -6,9 +6,39 @@
 
 Returns gateway health and persistence mode.
 
+### `POST /api/auth/guest`
+
+Starts a fresh backend guest session and returns a bearer token for that guest session.
+
+### `POST /api/auth/signup`
+
+Creates an email/password account and returns a bearer token plus the signed-in session.
+
+Request:
+
+```json
+{
+  "name": "<display-name>",
+  "email": "<user-email>",
+  "password": "<user-password>"
+}
+```
+
+### `POST /api/auth/login`
+
+Logs into an existing email/password account and returns a bearer token plus the signed-in session.
+
+### `GET /api/auth/session`
+
+Restores the current backend session from the bearer token in the `Authorization` header.
+
+### `POST /api/auth/logout`
+
+Ends the current backend session.
+
 ### `GET /api/sessions/recent`
 
-Returns the latest stored searches from MongoDB or the in-memory fallback store.
+Returns the latest stored searches for the authenticated user session or the active guest session.
 
 ### `POST /api/search`
 
@@ -27,6 +57,8 @@ Request:
   ]
 }
 ```
+
+`Authorization: Bearer <token>` is optional for recommendation responses, but the React app sends it so searches are saved into the right backend guest or user session.
 
 `excludeResults` is optional. The React app sends the current temporary result set when a user clicks
 "Search more" so the next batch can replace duplicate matches with fresh recommendations.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -58,6 +59,12 @@ function readEnvExampleValues(envPath) {
 
 async function importConfig(caseName) {
   const moduleUrl = pathToFileURL(path.join(serviceRoot, "src/lib/config.js"));
+  moduleUrl.search = `?case=${caseName}-${Date.now()}`;
+  return import(moduleUrl.href);
+}
+
+async function importStore(caseName) {
+  const moduleUrl = pathToFileURL(path.join(serviceRoot, "src/lib/store.js"));
   moduleUrl.search = `?case=${caseName}-${Date.now()}`;
   return import(moduleUrl.href);
 }
@@ -147,7 +154,7 @@ await runTest("node api env example matches active config contract", async () =>
   assert.equal(config.mongoDbUri, "");
   assert.equal(config.defaultSearchLimit, 5);
   assert.equal(config.maxSearchLimit, 20);
-  assert.equal(config.recentSearchLimit, 6);
+  assert.equal(config.recentSearchLimit, 10);
 });
 
 await runTest("node api config gives the recommendation engine enough response time by default", async () => {
@@ -200,4 +207,117 @@ await runTest("node api gateway keeps non-json upstream failures readable", asyn
   assert.deepEqual(payload, { raw: "Internal Server Error" });
   assert.equal(getUpstreamErrorMessage(payload, "fallback"), "Internal Server Error");
   assert.equal(mapUpstreamStatus(500), 502);
+});
+
+await runTest("node api auth sessions separate guest and user recent searches and keep only the latest 10 unique queries", async () => {
+  fs.mkdirSync(testTempRoot, { recursive: true });
+  const tempDir = fs.mkdtempSync(path.join(testTempRoot, "node-store-empty-"));
+  process.env.SARKSEARCH_NODE_ENV_PATH = path.join(tempDir, "missing.env");
+  const testEmail = `learner-${crypto.randomUUID()}@example.test`;
+  const testPassword = `pw-${crypto.randomUUID()}`;
+  const testName = "Example Learner";
+
+  const {
+    createGuestSession,
+    initializePersistence,
+    invalidateAuthSession,
+    listRecentSearches,
+    loginUser,
+    registerUser,
+    resolveAuthSession,
+    saveSearchSession,
+  } = await importStore("auth-history");
+  await initializePersistence();
+
+  const createdUser = await registerUser({
+    email: testEmail,
+    password: testPassword,
+    name: testName,
+  });
+
+  assert.equal(createdUser.authContext.kind, "user");
+  assert.equal(createdUser.authContext.user.email, testEmail);
+  assert.equal(createdUser.authContext.user.name, testName);
+  assert.ok(createdUser.token);
+
+  await assert.rejects(
+    () => registerUser({
+      email: testEmail,
+      password: testPassword,
+      name: "Duplicate Learner",
+    }),
+    /already exists/i,
+  );
+
+  const loggedInUser = await loginUser({
+    email: testEmail,
+    password: testPassword,
+  });
+  const userAuthContext = await resolveAuthSession(loggedInUser.token);
+  assert.equal(userAuthContext.kind, "user");
+  assert.equal(userAuthContext.user.email, testEmail);
+
+  const firstGuestSession = await createGuestSession();
+  const firstGuestContext = await resolveAuthSession(firstGuestSession.token);
+  assert.equal(firstGuestContext.kind, "guest");
+
+  for (let index = 1; index <= 12; index += 1) {
+    await saveSearchSession(
+      {
+        query: `Query ${index}`,
+        summary: `Summary ${index}`,
+        results: [],
+        agentTrace: [],
+        orchestration: {},
+        meta: {},
+      },
+      { authContext: userAuthContext },
+    );
+  }
+
+  await saveSearchSession(
+    {
+      query: "Query 5",
+      summary: "Summary 5 latest",
+      results: [],
+      agentTrace: [],
+      orchestration: {},
+      meta: {},
+    },
+    { authContext: userAuthContext },
+  );
+
+  await saveSearchSession(
+    {
+      query: "Guest query",
+      summary: "Guest summary",
+      results: [],
+      agentTrace: [],
+      orchestration: {},
+      meta: {},
+    },
+    { authContext: firstGuestContext },
+  );
+
+  assert.deepEqual(await listRecentSearches({ authContext: userAuthContext }), [
+    "Query 5",
+    "Query 12",
+    "Query 11",
+    "Query 10",
+    "Query 9",
+    "Query 8",
+    "Query 7",
+    "Query 6",
+    "Query 4",
+    "Query 3",
+  ]);
+  assert.deepEqual(await listRecentSearches({ authContext: firstGuestContext }), ["Guest query"]);
+
+  const secondGuestSession = await createGuestSession();
+  const secondGuestContext = await resolveAuthSession(secondGuestSession.token);
+  assert.deepEqual(await listRecentSearches({ authContext: secondGuestContext }), []);
+
+  await invalidateAuthSession(loggedInUser.token);
+  assert.equal(await resolveAuthSession(loggedInUser.token), null);
+  assert.deepEqual(await listRecentSearches(), []);
 });

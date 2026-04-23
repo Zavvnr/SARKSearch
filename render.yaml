@@ -52,13 +52,13 @@ services:
       - key: CORS_ORIGIN
         value: "*"
       - key: MONGODB_URI
-        value: ""
+        sync: false
       - key: DEFAULT_SEARCH_LIMIT
         value: "5"
       - key: MAX_SEARCH_LIMIT
         value: "20"
       - key: RECENT_SEARCH_LIMIT
-        value: "6"
+        value: "10"
 
   - type: pserv
     name: sarksearch-engine

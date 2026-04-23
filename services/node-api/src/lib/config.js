@@ -77,7 +77,7 @@ export function buildConfig() {
     mongoDbUri: getString("MONGODB_URI", ""),
     defaultSearchLimit: Math.min(defaultSearchLimit, maxSearchLimit),
     maxSearchLimit,
-    recentSearchLimit: getNumber("RECENT_SEARCH_LIMIT", 6),
+    recentSearchLimit: getNumber("RECENT_SEARCH_LIMIT", 10),
   };
 }
 

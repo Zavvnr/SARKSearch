@@ -1,11 +1,36 @@
 # Database Schema
 
+## User collection
+
+MongoDB stores user accounts for email/password login when `MONGODB_URI` is configured.
+
+### Fields
+
+- `email`: normalized email address
+- `name`: display name
+- `passwordHash`: salted password hash
+- `createdAt` / `updatedAt`: timestamps from Mongoose
+
+## Auth session collection
+
+MongoDB stores backend guest/user sessions for token-based session restore.
+
+### Fields
+
+- `tokenHash`: SHA-256 hash of the bearer token
+- `kind`: `guest` or `user`
+- `userId`: linked user document for signed-in sessions
+- `expiresAt`: automatic session expiry timestamp
+- `createdAt` / `updatedAt`: timestamps from Mongoose
+
 ## Search session collection
 
 MongoDB stores completed recommendation runs through the Node.js gateway.
 
 ### Fields
 
+- `scopeKey`: owner bucket for the recent-search list, based on either `user:<id>` or `guest:<sessionId>`
+- `queryKey`: normalized query string used to keep recent searches unique per scope
 - `query`: original plain-English request
 - `summary`: generated summary sentence for the run
 - `tools`: list of recommended tool names

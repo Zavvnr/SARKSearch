@@ -6,8 +6,8 @@ SARKSearch is a production-style, multi-agent web application that helps beginne
 
 ## What is in the repo
 
-- `apps/web`: React single-page application for search, recommendations, and recent search visibility
-- `services/node-api`: Node.js orchestration layer with caching, FastAPI proxying, and optional MongoDB persistence
+- `apps/web`: React single-page application for search, recommendations, recent history, and account login
+- `services/node-api`: Node.js orchestration layer with caching, FastAPI proxying, guest/user sessions, and optional MongoDB persistence
 - `services/recommendation-engine`: FastAPI preprocessing and recommendation engine powered by the GPT-5.4 LLM Brain
 - `docs/`: product, architecture, and API reference artifacts
 
@@ -73,7 +73,8 @@ Default values already point the three local services at each other:
 
 Notes:
 
-- Leave `MONGODB_URI` blank to use the in-memory recent-search fallback.
+- Local `.env` files are already ignored by Git. Keep real emails, passwords, API keys, and database URIs only in those local files or in your deployment secret manager.
+- Set `MONGODB_URI` if you want account logins, backend sessions, and recent-search history to persist across restarts.
 - Set `OPENAI_API_KEY` so the LLM Brain can generate recommendations.
 - `OPENAI_MODEL` now defaults to `gpt-4o-mini` for faster, lower-cost searches.
 
@@ -113,13 +114,15 @@ What this means:
 ## Features
 
 - Beginner-friendly search with guided prompt pills
+- Email/password account creation and login backed by the Node API
+- Default guest mode that starts a fresh recent-search session whenever the guest session restarts
 - GPT-5.4 LLM Brain recommendations across career, learning, research, productivity, creative, coding, finance, and community goals
 - Ranked top 5 results with "search more" expansion in fresh 5-result batches up to 20 results
 - Application network view that asks the engine for up to 50 nearby apps and sites around the prompt
 - Contextual relevance explanations and first-step tips
 - Google Docs-compatible starter guide for every recommended tool, with a first-use checklist
 - Simplified beginner-facing interface focused on search, results, and starter actions
-- Optional MongoDB persistence for recent searches
+- Optional MongoDB persistence for accounts, backend sessions, and recent searches
 
 ## Architecture docs
 
@@ -134,5 +137,5 @@ What this means:
 
 - The active recommendation path uses GPT-5.4 as the LLM Brain knowledgebase.
 - The codebase intentionally avoids a made-up local recommendation database.
-- Search history can still persist through MongoDB, but recommendations are generated at request time.
+- Account data and search history can persist through MongoDB, but recommendations are generated at request time.
 - If the LLM Brain is unavailable, the app reports that configuration issue instead of returning hardcoded fallback tools.
